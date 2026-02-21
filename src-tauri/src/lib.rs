@@ -68,7 +68,16 @@ async fn generate_ollama_response(prompt: String, model: Option<String>) -> Resu
 
 #[tauri::command]
 async fn open_settings_window(app: AppHandle) -> Result<(), String> {
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.hide();
+    }
+
     if let Some(window) = app.get_webview_window("settings") {
+        let _ = window.set_resizable(false);
+        let _ = window.set_maximizable(false);
+        if window.is_maximized().unwrap_or(false) {
+            let _ = window.unmaximize();
+        }
         let _ = window.center();
         let _ = window.show();
         let _ = window.set_focus();
@@ -82,7 +91,7 @@ async fn open_settings_window(app: AppHandle) -> Result<(), String> {
     )
     .title("Sarah AI Settings")
     .inner_size(920.0, 640.0)
-    .resizable(true)
+    .resizable(false)
     .maximizable(false)
     .minimizable(true)
     .decorations(false)

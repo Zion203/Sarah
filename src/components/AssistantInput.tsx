@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { MoonStar, Settings2, Square, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,34 @@ const PLACEHOLDER_BY_STATE: Record<UIVisualState, string> = {
   thinking: "Thinking...",
   speaking: "Speaking response...",
 };
+
+const ORB_EASTER_EGG_COLORS: Array<[string, string]> = [
+  ["#CADCFC", "#A0B9D1"],
+  ["#FF9A8B", "#FF6A88"],
+  ["#7DF9FF", "#2BD2FF"],
+  ["#FDE68A", "#F59E0B"],
+  ["#C4B5FD", "#7C3AED"],
+  ["#86EFAC", "#0EA5A0"],
+];
+const ORB_PALETTE_STORAGE_KEY = "sarah_orb_palette_v1";
+
+function readStoredOrbPaletteIndex() {
+  if (typeof window === "undefined") {
+    return 0;
+  }
+
+  const raw = window.localStorage.getItem(ORB_PALETTE_STORAGE_KEY);
+  if (raw === null) {
+    return 0;
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return 0;
+  }
+
+  return parsed % ORB_EASTER_EGG_COLORS.length;
+}
 
 interface AssistantInputProps {
   amplitude: number;
@@ -42,16 +70,34 @@ function AssistantInput({
   state,
 }: AssistantInputProps) {
   const placeholder = useMemo(() => PLACEHOLDER_BY_STATE[state], [state]);
+  const [orbPaletteIndex, setOrbPaletteIndex] = useState(readStoredOrbPaletteIndex);
+  const orbColors = ORB_EASTER_EGG_COLORS[orbPaletteIndex % ORB_EASTER_EGG_COLORS.length];
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(ORB_PALETTE_STORAGE_KEY, String(orbPaletteIndex));
+  }, [orbPaletteIndex]);
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     onSubmit();
   };
 
   return (
     <form className="sarah-input-shell" data-tauri-drag-region onSubmit={handleSubmit}>
-      <div className="sarah-input-orb-wrap" data-tauri-drag-region aria-hidden="true">
-        <Orb amplitude={amplitude} state={state} />
+      <div className="sarah-input-orb-wrap" data-tauri-disable-drag-region="true">
+        <button
+          type="button"
+          className="sarah-input-orb-button"
+          onClick={() => setOrbPaletteIndex((current) => (current + 1) % ORB_EASTER_EGG_COLORS.length)}
+          aria-label="Cycle orb color"
+          title="Easter egg: change orb colors"
+        >
+          <Orb amplitude={amplitude} state={state} colors={orbColors} />
+        </button>
       </div>
 
       <Input
