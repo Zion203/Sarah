@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, Store } from "lucide-react";
@@ -7,10 +8,21 @@ import AssistantInput from "@/components/AssistantInput";
 import ConversationFeed from "@/components/ConversationFeed";
 import HistoryWindow from "@/components/HistoryWindow";
 import SettingsWindow from "@/components/SettingsWindow";
+import { useTheme } from "@/hooks/useTheme";
 import { useUIState } from "@/hooks/useUIState";
 import "./styles/sarah-ai.css";
 
-function MainOverlayApp() {
+const WINDOW_WIDTH = 520;
+const WINDOW_HEIGHT_HIDDEN = 88;
+const WINDOW_HEIGHT_INPUT_ONLY = 102;
+const WINDOW_HEIGHT_WITH_RESPONSE = 226;
+
+interface MainOverlayAppProps {
+  isDarkTheme: boolean;
+  onToggleTheme: () => void;
+}
+
+function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
   const [isUiVisible, setIsUiVisible] = useState(false);
   const [isResponseVisible, setIsResponseVisible] = useState(true);
   const {
@@ -61,13 +73,44 @@ function MainOverlayApp() {
   }, []);
 
   useEffect(() => {
-    const targetHeight = isUiVisible ? (isResponseVisible ? 236 : 112) : 88;
+    const targetHeight = isUiVisible
+      ? isResponseVisible
+        ? WINDOW_HEIGHT_WITH_RESPONSE
+        : WINDOW_HEIGHT_INPUT_ONLY
+      : WINDOW_HEIGHT_HIDDEN;
+
     void getCurrentWindow()
-      .setSize(new LogicalSize(520, targetHeight))
+      .setSize(new LogicalSize(WINDOW_WIDTH, targetHeight))
       .catch(() => {
         // Ignore if not running in Tauri context.
       });
   }, [isResponseVisible, isUiVisible]);
+
+  useEffect(() => {
+    let unlisten: null | (() => void) = null;
+    let disposed = false;
+
+    void listen("sarah://show-overlay", () => {
+      setIsUiVisible(true);
+    })
+      .then((dispose) => {
+        if (disposed) {
+          dispose();
+          return;
+        }
+        unlisten = dispose;
+      })
+      .catch(() => {
+        // Ignore if not running in Tauri context.
+      });
+
+    return () => {
+      disposed = true;
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -119,11 +162,13 @@ function MainOverlayApp() {
           >
             <AssistantInput
               amplitude={amplitude}
+              isDarkTheme={isDarkTheme}
               onClear={clearPrompt}
               onOpenSettings={openSettingsWindow}
               onPromptChange={setPrompt}
               onStop={handleStopAction}
               onSubmit={handleSubmit}
+              onToggleTheme={onToggleTheme}
               prompt={prompt}
               readOnly={isPromptLocked}
               showStopAction={showStopAction}
@@ -137,7 +182,7 @@ function MainOverlayApp() {
                   onClick={() => setIsResponseVisible((current) => !current)}
                   aria-expanded={isResponseVisible}
                   aria-controls="sarah-response-body"
-                  title={isResponseVisible ? "Hide response" : "Show response"}
+                  title={isResponseVisible ? "Collapse response" : "Expand response"}
                 >
                   <motion.span
                     animate={{ rotate: isResponseVisible ? 0 : -180 }}
@@ -184,21 +229,17 @@ function App() {
     () => new URLSearchParams(window.location.search).get("window") ?? "main",
     [],
   );
-
-  useEffect(() => {
-    document.documentElement.classList.add("dark");
-    return () => document.documentElement.classList.remove("dark");
-  }, []);
+  const { isDarkTheme, theme, toggleTheme } = useTheme();
 
   if (windowType === "settings") {
-    return <SettingsWindow />;
+    return <SettingsWindow onToggleTheme={toggleTheme} theme={theme} />;
   }
 
   if (windowType === "history") {
     return <HistoryWindow />;
   }
 
-  return <MainOverlayApp />;
+  return <MainOverlayApp isDarkTheme={isDarkTheme} onToggleTheme={toggleTheme} />;
 }
 
 export default App;

@@ -79,14 +79,29 @@ interface OrbProps {
 function Orb({ amplitude, state }: OrbProps) {
   const prefersReducedMotion = Boolean(useReducedMotion());
   const pulseAnimation = pulseByState(state, prefersReducedMotion);
+  const isGenerating = state === "thinking";
+  const shellScale = prefersReducedMotion ? 1 : 1 + amplitude * scaleMultiplierByState(state);
 
   return (
     <motion.div
       className="sarah-mini-orb-shell"
-      animate={{
-        scale: prefersReducedMotion ? 1 : 1 + amplitude * scaleMultiplierByState(state),
-      }}
-      transition={{ type: "spring", stiffness: 150, damping: 20, mass: 0.72 }}
+      animate={
+        isGenerating && !prefersReducedMotion
+          ? { scale: shellScale, rotate: [0, 360] }
+          : { scale: shellScale, rotate: 0 }
+      }
+      transition={
+        isGenerating && !prefersReducedMotion
+          ? {
+              scale: { type: "spring", stiffness: 150, damping: 20, mass: 0.72 },
+              rotate: {
+                duration: 1.6,
+                ease: "linear",
+                repeat: Number.POSITIVE_INFINITY,
+              },
+            }
+          : { type: "spring", stiffness: 150, damping: 20, mass: 0.72 }
+      }
     >
       <div
         className={cn(

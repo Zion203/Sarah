@@ -1,9 +1,10 @@
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager, Runtime, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder,
 };
 use std::time::Duration;
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
 #[derive(serde::Deserialize)]
 struct OllamaGenerateResponse {
@@ -80,11 +81,12 @@ async fn open_settings_window(app: AppHandle) -> Result<(), String> {
         WebviewUrl::App("index.html?window=settings".into()),
     )
     .title("Sarah AI Settings")
-    .inner_size(460.0, 420.0)
-    .resizable(false)
+    .inner_size(920.0, 640.0)
+    .resizable(true)
     .maximizable(false)
-    .minimizable(false)
-    .always_on_top(true)
+    .minimizable(true)
+    .decorations(false)
+    .always_on_top(false)
     .center()
     .build()
     .map_err(|error| error.to_string())?;
@@ -127,6 +129,7 @@ fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             let _ = window.center();
             window.show()?;
             window.set_focus()?;
+            let _ = window.emit("sarah://show-overlay", ());
         }
     }
 
@@ -140,7 +143,17 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.center();
                 let _ = window.set_always_on_top(true);
+                let _ = window.hide();
             }
+
+            let ctrl_space = Shortcut::new(Some(Modifiers::CONTROL), Code::Space);
+            app.global_shortcut()
+                .on_shortcut(ctrl_space, |app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        let _ = toggle_main_window(app);
+                    }
+                })
+                .map_err(|error| error.to_string())?;
 
             let toggle_item = MenuItemBuilder::with_id("toggle", "Show / Hide Sarah AI").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit Sarah AI").build(app)?;
@@ -181,6 +194,7 @@ pub fn run() {
 
             Ok(())
         })
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             greet,
