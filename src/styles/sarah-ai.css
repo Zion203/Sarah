@@ -1,0 +1,878 @@
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent !important;
+}
+
+body {
+  overflow: hidden;
+}
+
+.sarah-overlay-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: transparent;
+  pointer-events: none;
+}
+
+.sarah-overlay-shell {
+  width: min(500px, calc(100vw - 0.5rem));
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.sarah-input-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.5rem;
+  height: 58px;
+  width: 100%;
+  border-radius: 22px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  padding: 0.45rem 0.56rem;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.sarah-input-shell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in oklab, var(--foreground) 16%, transparent) 0px,
+    color-mix(in oklab, var(--foreground) 6%, transparent) 1px,
+    transparent 10px
+  );
+}
+
+.sarah-input-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  background-image: radial-gradient(
+    color-mix(in oklab, var(--foreground) 12%, transparent) 0.4px,
+    transparent 0.4px
+  );
+  background-size: 3px 3px;
+  opacity: 0.14;
+}
+
+.sarah-input-shell > * {
+  position: relative;
+  z-index: 2;
+}
+
+.sarah-input-orb-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.15rem;
+}
+
+.sarah-mini-orb-shell {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sarah-mini-orb {
+  --orb-c1: color-mix(in oklab, var(--ring) 78%, var(--muted-foreground) 22%);
+  --orb-c2: color-mix(in oklab, var(--muted-foreground) 72%, var(--ring) 28%);
+  --orb-c3: color-mix(in oklab, var(--ring) 58%, var(--accent) 42%);
+  --breath-scale: 1.03;
+  --ring-opacity: 0.4;
+  --flow-opacity: 0.48;
+  --spectrum-opacity: 0.55;
+  --spectrum-speed: 6.8s;
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 9999px;
+  isolation: isolate;
+  animation: sarah-orb-breathe 5.2s ease-in-out infinite;
+}
+
+.sarah-mini-orb__core {
+  position: absolute;
+  inset: 2px;
+  border-radius: inherit;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at 34% 30%,
+      color-mix(in oklab, var(--foreground) 26%, transparent) 0%,
+      color-mix(in oklab, var(--orb-c1) 48%, transparent) 34%,
+      color-mix(in oklab, var(--orb-c2) 43%, transparent) 68%,
+      color-mix(in oklab, var(--background) 76%, transparent) 100%
+    ),
+    linear-gradient(
+      150deg,
+      color-mix(in oklab, var(--background) 76%, transparent) 0%,
+      color-mix(in oklab, var(--background) 52%, transparent) 100%
+    );
+  border: 1px solid color-mix(in oklab, var(--foreground) 16%, transparent);
+  opacity: 0.94;
+}
+
+.sarah-mini-orb__core::before {
+  content: "";
+  position: absolute;
+  inset: -30%;
+  border-radius: inherit;
+  background: conic-gradient(
+    from 15deg,
+    transparent 0deg,
+    color-mix(in oklab, var(--orb-c1) 50%, transparent) 95deg,
+    color-mix(in oklab, var(--orb-c2) 56%, transparent) 190deg,
+    color-mix(in oklab, var(--orb-c3) 46%, transparent) 285deg,
+    transparent 360deg
+  );
+  animation: sarah-orb-internal-drift 4.8s ease-in-out infinite;
+}
+
+.sarah-mini-orb__core::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle at 66% 23%,
+    color-mix(in oklab, var(--foreground) 22%, transparent),
+    transparent 52%
+  );
+}
+
+.sarah-mini-orb__flow {
+  position: absolute;
+  inset: 3px;
+  border-radius: inherit;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: var(--flow-opacity);
+}
+
+.sarah-mini-orb__flow--one {
+  background:
+    radial-gradient(circle at 24% 64%, var(--orb-c1), transparent 58%),
+    radial-gradient(circle at 72% 36%, var(--orb-c2), transparent 64%);
+  animation: sarah-orb-flow-one 4.2s ease-in-out infinite;
+}
+
+.sarah-mini-orb__flow--two {
+  background:
+    radial-gradient(circle at 72% 76%, var(--orb-c3), transparent 62%),
+    radial-gradient(circle at 28% 24%, color-mix(in oklab, var(--orb-c2) 72%, transparent), transparent 58%);
+  animation: sarah-orb-flow-two 5.6s ease-in-out infinite;
+}
+
+.sarah-mini-orb__spectrum {
+  position: absolute;
+  inset: -4%;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: var(--spectrum-opacity);
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in oklab, var(--orb-c1) 72%, transparent) 0deg,
+    color-mix(in oklab, var(--orb-c2) 76%, transparent) 120deg,
+    color-mix(in oklab, var(--orb-c3) 68%, transparent) 240deg,
+    color-mix(in oklab, var(--orb-c1) 72%, transparent) 360deg
+  );
+  -webkit-mask: radial-gradient(circle, transparent 49%, #000 57%, #000 63%, transparent 70%);
+  mask: radial-gradient(circle, transparent 49%, #000 57%, #000 63%, transparent 70%);
+  animation: sarah-orb-spectrum-spin var(--spectrum-speed) linear infinite;
+}
+
+.sarah-mini-orb__pulse {
+  position: absolute;
+  inset: -8%;
+  border-radius: inherit;
+  pointer-events: none;
+  border: 1px solid color-mix(in oklab, var(--foreground) 24%, transparent);
+  background: radial-gradient(circle, transparent 58%, color-mix(in oklab, var(--orb-c1) 22%, transparent) 100%);
+}
+
+.sarah-mini-orb__ring {
+  position: absolute;
+  border-radius: 9999px;
+  pointer-events: none;
+}
+
+.sarah-mini-orb__ring--outer {
+  inset: -2%;
+  border: 1px solid color-mix(in oklab, var(--foreground) 22%, transparent);
+  opacity: var(--ring-opacity);
+  animation: sarah-orb-ring-drift-outer 5.2s ease-in-out infinite;
+}
+
+.sarah-mini-orb__ring--inner {
+  inset: 17%;
+  border: 1px solid color-mix(in oklab, var(--foreground) 16%, transparent);
+  opacity: calc(var(--ring-opacity) - 0.14);
+  animation: sarah-orb-ring-drift-inner 4.4s ease-in-out infinite;
+}
+
+.sarah-mini-orb--idle {
+  --orb-c1: color-mix(in oklab, var(--ring) 76%, var(--muted-foreground) 24%);
+  --orb-c2: color-mix(in oklab, var(--muted-foreground) 70%, var(--ring) 30%);
+  --orb-c3: color-mix(in oklab, var(--ring) 56%, var(--accent) 44%);
+  --breath-scale: 1.028;
+  --ring-opacity: 0.34;
+  --flow-opacity: 0.34;
+  --spectrum-opacity: 0.2;
+  --spectrum-speed: 8.2s;
+}
+
+.sarah-mini-orb--listening {
+  --orb-c1: color-mix(in oklab, var(--ring) 84%, var(--muted-foreground) 16%);
+  --orb-c2: color-mix(in oklab, var(--muted-foreground) 76%, var(--ring) 24%);
+  --orb-c3: color-mix(in oklab, var(--ring) 64%, var(--accent) 36%);
+  --breath-scale: 1.04;
+  --ring-opacity: 0.42;
+  --flow-opacity: 0.5;
+  --spectrum-opacity: 0.56;
+  --spectrum-speed: 4.2s;
+}
+
+.sarah-mini-orb--thinking {
+  --orb-c1: color-mix(in oklab, var(--ring) 88%, var(--foreground) 12%);
+  --orb-c2: color-mix(in oklab, var(--muted-foreground) 78%, var(--foreground) 22%);
+  --orb-c3: color-mix(in oklab, var(--ring) 68%, var(--muted-foreground) 32%);
+  --breath-scale: 1.054;
+  --ring-opacity: 0.48;
+  --flow-opacity: 0.62;
+  --spectrum-opacity: 0.72;
+  --spectrum-speed: 2.2s;
+}
+
+.sarah-mini-orb--speaking {
+  --orb-c1: color-mix(in oklab, var(--ring) 90%, var(--foreground) 10%);
+  --orb-c2: color-mix(in oklab, var(--muted-foreground) 82%, var(--foreground) 18%);
+  --orb-c3: color-mix(in oklab, var(--ring) 72%, var(--muted-foreground) 28%);
+  --breath-scale: 1.06;
+  --ring-opacity: 0.5;
+  --flow-opacity: 0.66;
+  --spectrum-opacity: 0.76;
+  --spectrum-speed: 1.7s;
+}
+
+.sarah-mini-orb--still,
+.sarah-mini-orb--still .sarah-mini-orb__flow,
+.sarah-mini-orb--still .sarah-mini-orb__spectrum,
+.sarah-mini-orb--still .sarah-mini-orb__core::before,
+.sarah-mini-orb--still .sarah-mini-orb__ring {
+  animation: none !important;
+}
+
+.sarah-input[data-slot="input"] {
+  height: 2.25rem;
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  box-shadow: none;
+  padding-left: 0;
+  padding-right: 0.12rem;
+  font-size: 0.9rem;
+  line-height: 1;
+  transition: transform 0.18s ease;
+}
+
+.sarah-input[data-slot="input"][readonly] {
+  color: color-mix(in oklab, var(--muted-foreground) 88%, var(--foreground));
+  caret-color: transparent;
+}
+
+.sarah-input[data-slot="input"]::placeholder {
+  color: var(--muted-foreground);
+}
+
+.sarah-input[data-slot="input"]:focus {
+  transform: scale(1.005);
+}
+
+.sarah-input[data-slot="input"]:focus-visible {
+  outline: none;
+  border: 0;
+  box-shadow: none;
+}
+
+.sarah-action-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sarah-action-button[data-slot="button"] {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 0.7rem;
+  background: transparent;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.sarah-action-button--stop[data-slot="button"] {
+  color: color-mix(in oklab, var(--destructive) 72%, var(--muted-foreground));
+}
+
+.sarah-action-button--stop[data-slot="button"]:hover {
+  color: var(--destructive);
+  background: color-mix(in oklab, var(--destructive) 14%, transparent);
+}
+
+.sarah-action-button--settings[data-slot="button"] {
+  color: color-mix(in oklab, var(--muted-foreground) 90%, var(--foreground));
+}
+
+.sarah-action-button--settings[data-slot="button"]:hover {
+  color: var(--foreground);
+  background: color-mix(in oklab, var(--foreground) 8%, transparent);
+}
+
+.sarah-response-toolbar {
+  margin-top: 0.12rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: calc(0.56rem + 2.15rem + 0.5rem);
+  padding-right: 0.56rem;
+}
+
+.sarah-response-toolbar__actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.42rem;
+}
+
+.sarah-response-toggle-button {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 84%, var(--background));
+  color: var(--muted-foreground);
+  transition: color 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.sarah-response-toggle-button:hover {
+  color: var(--foreground);
+  background: color-mix(in oklab, var(--card) 94%, var(--background));
+  border-color: color-mix(in oklab, var(--muted-foreground) 35%, var(--border));
+}
+
+.sarah-response-toggle-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ring) 44%, transparent);
+}
+
+.sarah-mcp-marketplace-button {
+  height: 1.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  border-radius: 9999px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--card) 82%, var(--background));
+  color: color-mix(in oklab, var(--muted-foreground) 90%, var(--foreground));
+  font-size: 0.68rem;
+  line-height: 1;
+  padding: 0 0.54rem 0 0.42rem;
+  transition: color 0.16s ease, background-color 0.16s ease, border-color 0.16s ease;
+}
+
+.sarah-mcp-marketplace-button:hover {
+  color: var(--foreground);
+  background: color-mix(in oklab, var(--card) 94%, var(--background));
+  border-color: color-mix(in oklab, var(--muted-foreground) 35%, var(--border));
+}
+
+.sarah-mcp-marketplace-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--ring) 44%, transparent);
+}
+
+.sarah-response-collapse {
+  overflow: hidden;
+}
+
+@keyframes sarah-orb-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(var(--breath-scale));
+  }
+}
+
+@keyframes sarah-orb-internal-drift {
+  0%,
+  100% {
+    transform: translate3d(-6%, -4%, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(7%, 5%, 0) rotate(16deg);
+  }
+}
+
+@keyframes sarah-orb-ring-drift-outer {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(12deg) scale(1.012);
+  }
+}
+
+@keyframes sarah-orb-ring-drift-inner {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1);
+  }
+  50% {
+    transform: rotate(-14deg) scale(0.988);
+  }
+}
+
+@keyframes sarah-orb-flow-one {
+  0%,
+  100% {
+    transform: translate3d(-2%, 2%, 0) scale(0.95) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(3%, -3%, 0) scale(1.04) rotate(10deg);
+  }
+}
+
+@keyframes sarah-orb-flow-two {
+  0%,
+  100% {
+    transform: translate3d(2%, -2%, 0) scale(1.02) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(-3%, 3%, 0) scale(0.96) rotate(-11deg);
+  }
+}
+
+@keyframes sarah-orb-spectrum-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes sarah-status-processing-scan {
+  from {
+    background-position: -140% 0;
+  }
+  to {
+    background-position: 140% 0;
+  }
+}
+
+.sarah-chat-thread {
+  margin-top: 0.14rem;
+  width: 100%;
+  height: 132px;
+  min-height: 132px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding-right: 0.1rem;
+  border: 1px solid var(--border);
+  border-radius: 0.95rem;
+  background: color-mix(in oklab, var(--muted) 82%, var(--background));
+  padding: 0.6rem;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.sarah-chat-thread::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.sarah-chat-thread::-webkit-scrollbar-button,
+.sarah-chat-thread::-webkit-scrollbar-button:single-button,
+.sarah-chat-thread::-webkit-scrollbar-button:single-button:vertical:decrement,
+.sarah-chat-thread::-webkit-scrollbar-button:single-button:vertical:increment {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+.sarah-history-list {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 54%, transparent) transparent;
+}
+
+.sarah-history-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sarah-history-list::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 9999px;
+}
+
+.sarah-history-list::-webkit-scrollbar-button,
+.sarah-history-list::-webkit-scrollbar-button:single-button,
+.sarah-history-list::-webkit-scrollbar-button:single-button:vertical:decrement,
+.sarah-history-list::-webkit-scrollbar-button:single-button:vertical:increment {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+.sarah-history-list::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--muted-foreground) 54%, transparent);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+}
+
+.sarah-history-list::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--muted-foreground) 74%, transparent);
+}
+
+.sarah-response-panel {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: var(--card);
+  padding: 0.56rem 0.62rem;
+}
+
+.sarah-response-status {
+  margin: 0;
+  position: relative;
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+}
+
+.sarah-response-status--processing {
+  color: transparent;
+}
+
+.sarah-response-status__base,
+.sarah-response-status__scan {
+  display: inline-block;
+}
+
+.sarah-response-status__base {
+  color: color-mix(in oklab, var(--muted-foreground) 88%, var(--foreground));
+}
+
+.sarah-response-status__scan {
+  position: absolute;
+  left: 0;
+  top: 0;
+  color: transparent;
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    transparent 34%,
+    color-mix(in oklab, var(--foreground) 96%, var(--ring)) 50%,
+    transparent 66%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: sarah-status-processing-scan 1.15s ease-in-out infinite;
+}
+
+.sarah-response-text {
+  margin: 0.24rem 0 0;
+  font-size: 0.76rem;
+  color: var(--foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sarah-chat-empty {
+  margin: 0;
+  border: 1px dashed color-mix(in oklab, var(--border) 85%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in oklab, var(--card) 88%, transparent);
+  padding: 0.7rem;
+  font-size: 0.76rem;
+  color: var(--muted-foreground);
+}
+
+.sarah-settings-window {
+  width: 100%;
+  height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 1rem;
+}
+
+.sarah-history-window {
+  width: 100%;
+  height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+  padding: 1rem;
+}
+
+.sarah-history-panel {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.sarah-history-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.sarah-history-panel__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.sarah-history-panel__eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sarah-history-panel__title {
+  margin: 0.1rem 0 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.sarah-history-panel__subtitle {
+  margin: 0.28rem 0 0;
+  font-size: 0.77rem;
+  color: var(--muted-foreground);
+}
+
+.sarah-history-panel__subtitle code {
+  border: 1px solid var(--border);
+  border-radius: 0.35rem;
+  background: var(--muted);
+  padding: 0.08rem 0.28rem;
+  font-size: 0.72rem;
+}
+
+.sarah-history-list {
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: color-mix(in oklab, var(--muted) 72%, var(--background));
+  padding: 0.55rem;
+  overflow-y: auto;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sarah-history-empty {
+  margin: 0;
+  border: 1px dashed var(--border);
+  border-radius: 0.72rem;
+  background: var(--card);
+  padding: 0.7rem;
+  font-size: 0.76rem;
+  color: var(--muted-foreground);
+}
+
+.sarah-history-item {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  background: var(--card);
+  padding: 0.62rem;
+}
+
+.sarah-history-item__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+}
+
+.sarah-history-item__prompt {
+  margin: 0.4rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.sarah-history-item__response {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  color: var(--foreground);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.sarah-history-item__time {
+  margin: 0.45rem 0 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  font-size: 0.68rem;
+  color: var(--muted-foreground);
+}
+
+.sarah-settings-panel {
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--card);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.sarah-settings-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.sarah-settings-panel__eyebrow {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--muted-foreground);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.sarah-settings-panel__title {
+  margin: 0.1rem 0 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+
+.sarah-settings-panel__subtitle {
+  margin: 0.3rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted-foreground);
+}
+
+.sarah-settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.7rem;
+}
+
+.sarah-settings-card {
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: var(--background);
+  padding: 0.75rem;
+}
+
+.sarah-settings-card__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: var(--muted-foreground);
+}
+
+.sarah-settings-card__value {
+  margin: 0.55rem 0 0;
+  font-size: 0.87rem;
+  font-weight: 600;
+}
+
+.sarah-settings-card__note {
+  margin: 0.3rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+@media (max-width: 640px) {
+  .sarah-overlay-shell {
+    width: calc(100vw - 0.35rem);
+  }
+
+  .sarah-input-shell {
+    height: 54px;
+    border-radius: 20px;
+    padding: 0.4rem 0.5rem;
+  }
+
+  .sarah-mini-orb {
+    width: 31px;
+    height: 31px;
+  }
+
+  .sarah-mini-orb-shell {
+    width: 31px;
+    height: 31px;
+  }
+
+  .sarah-settings-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sarah-mini-orb,
+  .sarah-mini-orb__ring,
+  .sarah-mini-orb__flow,
+  .sarah-mini-orb__spectrum,
+  .sarah-mini-orb__pulse,
+  .sarah-mini-orb__core,
+  .sarah-mini-orb__core::before {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .sarah-response-status__scan {
+    animation: none !important;
+  }
+}
