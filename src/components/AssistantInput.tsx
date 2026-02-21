@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Settings2, Square } from "lucide-react";
+import { MoonStar, Settings2, Square, Sun } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Orb from "@/components/Orb";
@@ -14,11 +14,13 @@ const PLACEHOLDER_BY_STATE: Record<UIVisualState, string> = {
 
 interface AssistantInputProps {
   amplitude: number;
+  isDarkTheme: boolean;
   onClear: () => void;
   onOpenSettings: () => void;
   onPromptChange: (value: string) => void;
   onStop: () => void;
   onSubmit: () => void;
+  onToggleTheme: () => void;
   prompt: string;
   readOnly: boolean;
   showStopAction: boolean;
@@ -27,11 +29,13 @@ interface AssistantInputProps {
 
 function AssistantInput({
   amplitude,
+  isDarkTheme,
   onClear,
   onOpenSettings,
   onPromptChange,
   onStop,
   onSubmit,
+  onToggleTheme,
   prompt,
   readOnly,
   showStopAction,
@@ -69,6 +73,17 @@ function AssistantInput({
       />
 
       <div className="sarah-action-wrap" data-tauri-disable-drag-region="true">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          onClick={onToggleTheme}
+          className="sarah-action-button sarah-action-button--theme"
+          aria-label={isDarkTheme ? "Switch to light theme" : "Switch to dark theme"}
+          title={isDarkTheme ? "Switch to light theme" : "Switch to dark theme"}
+        >
+          {isDarkTheme ? <Sun className="size-3.5" /> : <MoonStar className="size-3.5" />}
+        </Button>
         <Button
           type="button"
           variant="ghost"

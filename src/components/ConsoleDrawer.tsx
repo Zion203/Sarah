@@ -24,14 +24,13 @@ function ConsoleDrawer() {
         variant="outline"
         size="sm"
         onClick={toggleConsole}
-        className="pointer-events-auto mb-3 rounded-full border-slate-500/40 bg-slate-900/55 text-slate-200 backdrop-blur-md hover:bg-slate-800/70"
+        className="pointer-events-auto mb-3 rounded-full border-border bg-card/90 text-foreground backdrop-blur-md hover:bg-accent"
       >
         <TerminalSquare className="size-4" />
         Console
         <ChevronUp
-          className={`size-4 transition-transform duration-200 ${
-            isConsoleOpen ? "rotate-180" : "rotate-0"
-          }`}
+          className={`size-4 transition-transform duration-200 ${isConsoleOpen ? "rotate-180" : "rotate-0"
+            }`}
         />
       </Button>
 
@@ -42,12 +41,12 @@ function ConsoleDrawer() {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: "104%", opacity: 0 }}
             transition={{ duration: 0.3, ease: [0.22, 0.8, 0.28, 1] }}
-            className="pointer-events-auto mb-4 h-[min(40vh,360px)] w-[min(95vw,68rem)] overflow-hidden rounded-2xl border border-slate-300/10 bg-slate-950/62 shadow-2xl backdrop-blur-xl"
+            className="pointer-events-auto mb-4 h-[min(40vh,360px)] w-[min(95vw,68rem)] overflow-hidden rounded-2xl border border-border bg-card/95 shadow-2xl backdrop-blur-xl"
           >
-            <header className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-300/10 px-4 py-3">
+            <header className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
               <div>
-                <p className="text-sm font-medium text-slate-200">Sarah AI Console</p>
-                <p className="text-xs text-slate-400">Transcript and state controls</p>
+                <p className="text-sm font-medium text-foreground">Sarah AI Console</p>
+                <p className="text-xs text-muted-foreground">Transcript and state controls</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-1">
@@ -108,15 +107,15 @@ function ConsoleDrawer() {
                 {logs.map((log) => (
                   <li
                     key={log.id}
-                    className="rounded-xl border border-slate-200/8 bg-slate-900/45 px-3 py-2"
+                    className="rounded-xl border border-border bg-muted px-3 py-2"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-medium tracking-[0.08em] text-cyan-300 uppercase">
+                      <span className="text-[11px] font-medium tracking-[0.08em] text-primary uppercase">
                         {log.mode}
                       </span>
-                      <span className="text-[11px] text-slate-500">{log.timestamp}</span>
+                      <span className="text-[11px] text-muted-foreground">{log.timestamp}</span>
                     </div>
-                    <p className="mt-1 text-xs leading-relaxed text-slate-300">{log.message}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-foreground">{log.message}</p>
                   </li>
                 ))}
               </ul>

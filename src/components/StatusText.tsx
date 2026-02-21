@@ -50,13 +50,13 @@ function StatusText({ compact = false }: StatusTextProps) {
         >
           <p
             className={cn(
-              "font-semibold tracking-[0.12em] text-slate-200/95 uppercase",
+              "font-semibold tracking-[0.12em] text-foreground uppercase",
               compact ? "text-xs" : "text-sm",
             )}
           >
             {copy.title}
           </p>
-          <p className={cn("mt-1 tracking-wide text-slate-400", compact ? "text-[11px]" : "text-xs")}>
+          <p className={cn("mt-1 tracking-wide text-muted-foreground", compact ? "text-[11px]" : "text-xs")}>
             {copy.subtitle}
           </p>
         </motion.div>
