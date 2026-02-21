@@ -46,6 +46,7 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
   }, []);
 
   const openSettingsWindow = useCallback(() => {
+    setIsUiVisible(false);
     void invoke("open_settings_window").catch((error) => {
       console.error("Failed to open settings window.", error);
     });

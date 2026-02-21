@@ -11,7 +11,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { useMemo, useState, type ComponentType } from "react";
+import { useMemo, useState, type ComponentType, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
@@ -23,6 +23,18 @@ interface SettingsWindowProps {
 }
 
 type SettingsTab = "general" | "appearance" | "audio" | "privacy";
+const DRAG_BLOCK_SELECTOR = [
+  "button",
+  "input",
+  "textarea",
+  "select",
+  "option",
+  "a",
+  "label",
+  "[role='button']",
+  "[data-tauri-disable-drag-region='true']",
+  "[contenteditable='true']",
+].join(",");
 
 const SETTINGS_TABS: Array<{
   icon: ComponentType<{ className?: string }>;
@@ -64,11 +76,37 @@ function SettingsWindow({ onToggleTheme, theme }: SettingsWindowProps) {
     () => SETTINGS_TABS.find((tab) => tab.key === activeTab)?.label ?? "General",
     [activeTab],
   );
+  const handleWindowMouseDownCapture = async (event: MouseEvent<HTMLElement>) => {
+    if (event.button !== 0 || event.detail > 1) {
+      return;
+    }
+
+    const target = event.target as HTMLElement;
+    if (target.closest(DRAG_BLOCK_SELECTOR)) {
+      return;
+    }
+
+    try {
+      await getCurrentWindow().startDragging();
+    } catch (error) {
+      console.error("Failed to start dragging settings window.", error);
+    }
+  };
 
   return (
-    <main className="sarah-settings-window" aria-label="Sarah AI settings window">
+    <main
+      className="sarah-settings-window"
+      aria-label="Sarah AI settings window"
+      onMouseDownCapture={handleWindowMouseDownCapture}
+    >
       <section className="sarah-settings-macos">
-        <header className="sarah-settings-titlebar" data-tauri-drag-region>
+        <header
+          className="sarah-settings-titlebar"
+          onDoubleClickCapture={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+        >
           <div className="sarah-settings-titlebar__meta">{activeLabel}</div>
           <p className="sarah-settings-titlebar__title">Sarah AI Settings</p>
           <div

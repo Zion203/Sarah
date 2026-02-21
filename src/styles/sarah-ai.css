@@ -100,12 +100,40 @@ body {
   margin-right: 0.22rem;
 }
 
+.sarah-input-orb-button {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9999px;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+}
+
+.sarah-input-orb-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--foreground) 28%, transparent);
+}
+
+.sarah-input-orb-button:hover .sarah-mini-orb-shell {
+  transform: scale(1.04);
+}
+
+.sarah-input-orb-button:active .sarah-mini-orb-shell {
+  transform: scale(0.97);
+}
+
 .sarah-mini-orb-shell {
   width: 34px;
   height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
+  transition: transform 0.16s ease;
 }
 
 .sarah-mini-orb {
@@ -673,7 +701,53 @@ body {
   margin: 0;
   position: relative;
   font-size: 0.68rem;
+  line-height: 1.15;
   color: var(--muted-foreground);
+}
+
+.sarah-response-status__phrase-viewport {
+  position: relative;
+  display: inline-flex;
+  overflow: hidden;
+  min-height: 1.2em;
+  align-items: flex-start;
+}
+
+.sarah-response-status__phrase {
+  position: relative;
+  display: inline-block;
+  white-space: nowrap;
+  will-change: transform, opacity;
+}
+
+.sarah-response-status__phrase-base {
+  display: inline-block;
+  color: color-mix(in oklab, var(--muted-foreground) 88%, var(--foreground));
+}
+
+.sarah-response-status__phrase-shimmer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.sarah-response-status__shimmer-wrap {
+  position: relative;
+  display: inline-block;
+  line-height: 1.15;
+}
+
+.sarah-response-status__shimmer-base {
+  display: inline-block;
+  color: color-mix(in oklab, var(--muted-foreground) 88%, var(--foreground));
+}
+
+.sarah-response-status__shimmer-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .sarah-response-status--processing {
@@ -718,6 +792,31 @@ body {
   padding-bottom: 0.08rem;
 }
 
+.sarah-response-text__cursor {
+  display: inline-block;
+  width: 0.5ch;
+  height: 1.02em;
+  margin-left: 0.05rem;
+  vertical-align: text-bottom;
+  border-radius: 2px;
+  background: color-mix(in oklab, var(--foreground) 88%, transparent);
+  animation: sarah-caret-blink 0.9s step-end infinite;
+}
+
+.sarah-response-text__cursor--hidden {
+  opacity: 0;
+  animation: none;
+}
+
+.sarah-response-typing-placeholder {
+  margin-top: 0.28rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.24rem;
+  font-size: 0.74rem;
+  color: color-mix(in oklab, var(--muted-foreground) 90%, var(--foreground));
+}
+
 .sarah-response-skeleton {
   margin-top: 0.28rem;
   display: flex;
@@ -748,6 +847,17 @@ body {
 
 .sarah-response-skeleton__line--mid {
   width: 62%;
+}
+
+@keyframes sarah-caret-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
 }
 
 .sarah-chat-empty {
@@ -825,7 +935,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: transparent;
+  background: var(--background);
   color: var(--foreground);
   padding: 0;
 }
@@ -835,7 +945,7 @@ body {
   height: 100%;
   border: 0;
   border-radius: 0;
-  background: transparent;
+  background: color-mix(in oklab, var(--background) 95%, var(--card));
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -917,6 +1027,7 @@ body {
   flex: 1;
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
+  background: color-mix(in oklab, var(--background) 93%, var(--card));
 }
 
 .sarah-settings-sidebar {
@@ -993,6 +1104,7 @@ body {
   gap: 0.75rem;
   padding: 0.92rem;
   overflow: auto;
+  background: color-mix(in oklab, var(--background) 92%, var(--card));
 }
 
 .sarah-settings-content__hero {
@@ -1314,6 +1426,10 @@ body {
   }
 
   .sarah-response-skeleton__line {
+    animation: none !important;
+  }
+
+  .sarah-response-text__cursor {
     animation: none !important;
   }
 }
