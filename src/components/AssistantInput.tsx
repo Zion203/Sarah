@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { MoonStar, Settings2, Square, Sun } from "lucide-react";
+import { Bot, Settings2, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Orb from "@/components/Orb";
@@ -42,13 +42,12 @@ function readStoredOrbPaletteIndex() {
 
 interface AssistantInputProps {
   amplitude: number;
-  isDarkTheme: boolean;
   onClear: () => void;
+  onOpenQuickSwitchModels: () => void;
   onOpenSettings: () => void;
   onPromptChange: (value: string) => void;
   onStop: () => void;
   onSubmit: () => void;
-  onToggleTheme: () => void;
   prompt: string;
   readOnly: boolean;
   showStopAction: boolean;
@@ -57,13 +56,12 @@ interface AssistantInputProps {
 
 function AssistantInput({
   amplitude,
-  isDarkTheme,
   onClear,
+  onOpenQuickSwitchModels,
   onOpenSettings,
   onPromptChange,
   onStop,
   onSubmit,
-  onToggleTheme,
   prompt,
   readOnly,
   showStopAction,
@@ -122,11 +120,11 @@ function AssistantInput({
           type="button"
           variant="ghost"
           size="icon-sm"
-          onClick={onToggleTheme}
-          className="sarah-action-button sarah-action-button--theme"
-          aria-label={isDarkTheme ? "Switch to light theme" : "Switch to dark theme"}
+          onClick={onOpenQuickSwitchModels}
+          className="sarah-action-button sarah-action-button--model"
+          aria-label="Open quick switch models"
         >
-          {isDarkTheme ? <Sun className="size-3.5" /> : <MoonStar className="size-3.5" />}
+          <Bot className="size-3.5" />
         </Button>
         <Button
           type="button"

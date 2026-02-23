@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ComponentType, type MouseEvent } from "react";
 import { Button } from "@/components/ui/button";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Switch } from "@/components/ui/switch";
 import { useAppPreferences, type ScreenCaptureSurface } from "@/hooks/useAppPreferences";
@@ -111,6 +112,11 @@ function SettingsWindow({ onToggleTheme, theme }: SettingsWindowProps) {
   const selectedSurfacePermission = preferences.screenPermissions[selectedSurface];
   const selectedSurfacePermissionTimestamp =
     preferences.screenPermissionGrantedAt[selectedSurface];
+  const effectiveCaptureDirectory =
+    (preferences.captureOutputDirectory ?? defaultCaptureDirectory) || "Loading...";
+  const isUsingCustomCaptureDirectory = Boolean(
+    preferences.captureOutputDirectory && preferences.captureOutputDirectory.trim().length > 0,
+  );
 
   useEffect(() => {
     void (async () => {
@@ -297,7 +303,14 @@ function SettingsWindow({ onToggleTheme, theme }: SettingsWindowProps) {
             </nav>
             <div className="sarah-settings-sidebar__footnote">
               <KeyRound className="size-3.5" />
-              <span>`Ctrl + Space` toggles the assistant</span>
+              <span>
+                <KbdGroup>
+                  <Kbd>Ctrl</Kbd>
+                  <span aria-hidden="true">+</span>
+                  <Kbd>Space</Kbd>
+                </KbdGroup>{" "}
+                toggles the assistant
+              </span>
             </div>
           </aside>
 
@@ -495,18 +508,27 @@ function SettingsWindow({ onToggleTheme, theme }: SettingsWindowProps) {
                   <article className="sarah-settings-row">
                     <div className="sarah-settings-row__copy">
                       <p className="sarah-settings-row__title">Capture save location</p>
-                      <p className="sarah-settings-row__note">
-                        Default: <code>{defaultCaptureDirectory || "Loading..."}</code>
-                      </p>
+                      <div className="sarah-settings-paths">
+                        <div className="sarah-settings-path">
+                          <span className="sarah-settings-path__label">Default</span>
+                          <code className="sarah-settings-path__value">
+                            {defaultCaptureDirectory || "Loading..."}
+                          </code>
+                        </div>
+                        <div
+                          className={`sarah-settings-path ${isUsingCustomCaptureDirectory ? "is-custom" : ""}`}
+                        >
+                          <span className="sarah-settings-path__label">Current</span>
+                          <code className="sarah-settings-path__value">
+                            {effectiveCaptureDirectory}
+                          </code>
+                          <span className="sarah-settings-path__badge">
+                            {isUsingCustomCaptureDirectory ? "Custom" : "Default"}
+                          </span>
+                        </div>
+                      </div>
                       <p className="sarah-settings-row__note">
                         Use folder picker to set custom location for videos and screenshots.
-                      </p>
-                      <p className="sarah-settings-row__note">
-                        Current:{" "}
-                        <code>
-                          {(preferences.captureOutputDirectory ?? defaultCaptureDirectory) ||
-                            "Loading..."}
-                        </code>
                       </p>
                       {capturePathNotice ? (
                         <p className="sarah-settings-row__note">{capturePathNotice}</p>
