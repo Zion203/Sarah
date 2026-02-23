@@ -245,6 +245,41 @@ export function useUIState() {
     );
   }, [clearPending]);
 
+  const setSystemConversation = useCallback(
+    (promptLabel: string, responseText: string, persist = false) => {
+      const safePrompt = promptLabel.trim() || "System";
+      const safeResponse = responseText.trim() || "Done.";
+      const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+      clearPending();
+      setIsPromptLocked(false);
+      setPrompt("");
+      setState("idle");
+      setConversations([
+        {
+          id,
+          prompt: safePrompt,
+          status: "completed",
+          response: safeResponse,
+        },
+      ]);
+
+      if (persist) {
+        const existing = readChatHistory();
+        writeChatHistory([
+          ...existing,
+          {
+            id,
+            prompt: safePrompt,
+            response: safeResponse,
+            timestamp: new Date().toISOString(),
+          },
+        ]);
+      }
+    },
+    [clearPending],
+  );
+
   return {
     amplitude,
     clearPrompt,
@@ -253,6 +288,7 @@ export function useUIState() {
     isPromptLocked,
     prompt,
     setPrompt,
+    setSystemConversation,
     setState,
     state,
     stopResponse,

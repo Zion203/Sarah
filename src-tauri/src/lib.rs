@@ -6,6 +6,8 @@ use tauri::{
 use std::time::Duration;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
+mod native_capture;
+
 #[derive(serde::Deserialize)]
 struct OllamaGenerateResponse {
     response: String,
@@ -209,7 +211,13 @@ pub fn run() {
             greet,
             generate_ollama_response,
             open_settings_window,
-            open_history_window
+            open_history_window,
+            native_capture::list_active_windows,
+            native_capture::get_default_capture_directory,
+            native_capture::pick_capture_output_directory,
+            native_capture::start_native_screen_recording,
+            native_capture::stop_native_screen_recording,
+            native_capture::take_native_screenshot
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
