@@ -66,10 +66,15 @@ export function useTheme() {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }, []);
 
+  const setThemeMode = useCallback((nextTheme: ThemeMode) => {
+    setTheme(nextTheme);
+  }, []);
+
   const isDarkTheme = useMemo(() => theme === "dark", [theme]);
 
   return {
     isDarkTheme,
+    setThemeMode,
     theme,
     toggleTheme,
   };

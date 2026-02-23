@@ -2,14 +2,19 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronDown, Store } from "lucide-react";
+import { Bot, ChevronDown, MoonStar, Store, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AssistantInput from "@/components/AssistantInput";
 import ConversationFeed from "@/components/ConversationFeed";
 import HistoryWindow from "@/components/HistoryWindow";
+import ModelsWindow from "@/components/ModelsWindow";
 import ScreenRecordingHud from "@/components/ScreenRecordingHud";
 import SettingsWindow from "@/components/SettingsWindow";
 import { useAppPreferences } from "@/hooks/useAppPreferences";
+import {
+  MAX_QUICK_SWITCH_MODELS,
+  useQuickSwitchModels,
+} from "@/hooks/useQuickSwitchModels";
 import { useScreenRecording } from "@/hooks/useScreenRecording";
 import { useTheme } from "@/hooks/useTheme";
 import { useUIState } from "@/hooks/useUIState";
@@ -29,6 +34,11 @@ interface SlashCommandDefinition {
 }
 
 const AVAILABLE_SLASH_COMMANDS: SlashCommandDefinition[] = [
+  {
+    command: "/clear",
+    description: "Clear the current response panel and show empty state.",
+    searchTerms: ["clear", "reset", "empty", "clean"],
+  },
   {
     command: "/history",
     description: "Open your local chat history window.",
@@ -64,6 +74,67 @@ const AVAILABLE_SLASH_COMMANDS: SlashCommandDefinition[] = [
 interface NativeScreenshotResult {
   capturedAtMs: number;
   screenshotPath: string;
+}
+
+function normalizeOllamaModelNames(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const unique = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string") {
+      continue;
+    }
+
+    const normalized = item.trim();
+    if (!normalized) {
+      continue;
+    }
+    unique.add(normalized);
+  }
+
+  return Array.from(unique);
+}
+
+function buildQuickSwitchOptions(
+  availableModels: string[],
+  quickSwitchModels: string[],
+  selectedModel: string,
+) {
+  const available = new Set(availableModels);
+  const unique = new Set<string>();
+
+  const addModel = (value: string) => {
+    const normalized = value.trim();
+    if (
+      !normalized ||
+      unique.has(normalized) ||
+      (available.size > 0 && !available.has(normalized))
+    ) {
+      return;
+    }
+    unique.add(normalized);
+  };
+
+  quickSwitchModels.forEach(addModel);
+  addModel(selectedModel);
+
+  for (const model of availableModels) {
+    if (unique.size >= MAX_QUICK_SWITCH_MODELS) {
+      break;
+    }
+    addModel(model);
+  }
+
+  if (unique.size === 0) {
+    const fallback = selectedModel.trim();
+    if (fallback) {
+      unique.add(fallback);
+    }
+  }
+
+  return Array.from(unique).slice(0, MAX_QUICK_SWITCH_MODELS);
 }
 
 function formatRecordingDuration(durationMs: number) {
@@ -120,6 +191,11 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
   const uiVisibleBeforeRecordingRef = useRef(false);
   const [isUiVisible, setIsUiVisible] = useState(false);
   const [isResponseVisible, setIsResponseVisible] = useState(true);
+  const { quickSwitchModels, setQuickSwitchModels } = useQuickSwitchModels();
+  const [isModelPickerVisible, setIsModelPickerVisible] = useState(false);
+  const [isModelPickerLoading, setIsModelPickerLoading] = useState(false);
+  const [modelPickerError, setModelPickerError] = useState<null | string>(null);
+  const [modelPickerItems, setModelPickerItems] = useState<string[]>([]);
   const [isWindowSourceSelectionVisible, setIsWindowSourceSelectionVisible] = useState(false);
   const [isWindowSourceSelectionLoading, setIsWindowSourceSelectionLoading] = useState(false);
   const [windowSourceSelectionError, setWindowSourceSelectionError] = useState<null | string>(null);
@@ -128,12 +204,15 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
   const [selectedWindowTitle, setSelectedWindowTitle] = useState<null | string>(null);
   const {
     amplitude,
+    clearConversation,
     clearPrompt,
     conversations,
     cycleState,
     isPromptLocked,
     prompt,
+    selectedModel,
     setPrompt,
+    setSelectedModel,
     setSystemConversation,
     setState,
     state,
@@ -164,8 +243,17 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
     });
   }, []);
 
+  const openModelsWindow = useCallback(() => {
+    setIsUiVisible(false);
+    void invoke("open_models_window").catch((error) => {
+      console.error("Failed to open models window.", error);
+    });
+  }, []);
+
   const showStopAction = isPromptLocked || isScreenRecording;
   const captureOutputDirectory = preferences.captureOutputDirectory ?? undefined;
+  const modelPickerTitle = "Models";
+  const modelPickerEmptyText = "No local Ollama models found.";
   const normalizedPrompt = useMemo(() => prompt.trim().toLowerCase(), [prompt]);
   const showSlashCommands = !isPromptLocked && normalizedPrompt.startsWith("/");
   const slashCommandQuery = showSlashCommands ? normalizedPrompt.slice(1).trim() : "";
@@ -187,6 +275,26 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
       return item.searchTerms.some((term) => term.includes(slashCommandQuery));
     });
   }, [showSlashCommands, slashCommandQuery]);
+
+  const handleSlashCommandSelect = useCallback(
+    (command: string) => {
+      setPrompt(command);
+      setIsResponseVisible(true);
+
+      window.requestAnimationFrame(() => {
+        const input = window.document.querySelector<HTMLInputElement>(
+          ".sarah-input[data-slot='input']",
+        );
+        if (!input) {
+          return;
+        }
+        input.focus();
+        const caretPosition = command.length;
+        input.setSelectionRange(caretPosition, caretPosition);
+      });
+    },
+    [setPrompt],
+  );
 
   const intentCommandLabel = useCallback((intent: CaptureIntent) => {
     return intent === "record" ? "/record" : "/take";
@@ -401,7 +509,20 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
   const handleSubmit = useCallback(() => {
     const normalizedPromptValue = prompt.trim().toLowerCase();
 
+    if (normalizedPromptValue === "/clear") {
+      setIsModelPickerVisible(false);
+      setIsWindowSourceSelectionVisible(false);
+      setWindowSourceSelectionItems([]);
+      setWindowSourceSelectionError(null);
+      setPendingCaptureIntent(null);
+      setSelectedWindowTitle(null);
+      setIsResponseVisible(true);
+      clearConversation();
+      return;
+    }
+
     if (normalizedPromptValue === "/history") {
+      setIsModelPickerVisible(false);
       setIsWindowSourceSelectionVisible(false);
       setPendingCaptureIntent(null);
       clearPrompt();
@@ -410,29 +531,34 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
     }
 
     if (normalizedPromptValue === "/record" || normalizedPromptValue === "/record start") {
+      setIsModelPickerVisible(false);
       clearPrompt();
       runCaptureIntent("record");
       return;
     }
 
     if (normalizedPromptValue === "/record stop") {
+      setIsModelPickerVisible(false);
       clearPrompt();
       handleStopRecordCommand();
       return;
     }
 
     if (normalizedPromptValue === "/take" || normalizedPromptValue === "/take screenshot") {
+      setIsModelPickerVisible(false);
       clearPrompt();
       runCaptureIntent("take");
       return;
     }
 
     if (normalizedPromptValue.startsWith("/screen")) {
+      setIsModelPickerVisible(false);
       clearPrompt();
       setSystemConversation("/record", 'Use `/record` for video and `/take` for screenshot.');
       return;
     }
 
+    setIsModelPickerVisible(false);
     setIsWindowSourceSelectionVisible(false);
     setWindowSourceSelectionItems([]);
     setWindowSourceSelectionError(null);
@@ -441,6 +567,7 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
     setIsResponseVisible(true);
     submitPrompt();
   }, [
+    clearConversation,
     clearPrompt,
     handleStopRecordCommand,
     openHistoryWindow,
@@ -448,9 +575,11 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
     runCaptureIntent,
     setSystemConversation,
     submitPrompt,
+    setIsModelPickerVisible,
   ]);
 
   const handleStopAction = useCallback(() => {
+    setIsModelPickerVisible(false);
     if (isScreenRecording) {
       setIsWindowSourceSelectionVisible(false);
       setPendingCaptureIntent(null);
@@ -464,6 +593,69 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
   const handleOpenMcpMarketplace = useCallback(() => {
     console.log("MCP Marketplace clicked. Integrate marketplace window here.");
   }, []);
+
+  const handleOpenQuickSwitchModels = useCallback(() => {
+    setIsResponseVisible(true);
+    setIsModelPickerVisible(true);
+    setIsWindowSourceSelectionVisible(false);
+    setWindowSourceSelectionItems([]);
+    setWindowSourceSelectionError(null);
+    setPendingCaptureIntent(null);
+    setSelectedWindowTitle(null);
+    setModelPickerError(null);
+
+    setIsModelPickerLoading(true);
+
+    void invoke<unknown>("list_ollama_models")
+      .then((result) => {
+        const models = normalizeOllamaModelNames(result);
+        const quickSwitch = buildQuickSwitchOptions(models, quickSwitchModels, selectedModel);
+        setModelPickerItems(quickSwitch);
+        if (quickSwitch.length > 0) {
+          setQuickSwitchModels((current) => {
+            if (current.length > 0) {
+              return current;
+            }
+            return quickSwitch;
+          });
+        }
+      })
+      .catch((error) => {
+        const message =
+          error instanceof Error
+            ? error.message
+            : typeof error === "object" &&
+                error !== null &&
+                "message" in error &&
+                typeof (error as { message: unknown }).message === "string"
+              ? (error as { message: string }).message
+              : "Failed to load local models from Ollama.";
+        setModelPickerError(message);
+        const fallback = buildQuickSwitchOptions([], quickSwitchModels, selectedModel);
+        setModelPickerItems(fallback);
+      })
+      .finally(() => {
+        setIsModelPickerLoading(false);
+      });
+  }, [quickSwitchModels, selectedModel, setQuickSwitchModels]);
+
+  const handleModelSelect = useCallback(
+    (model: string) => {
+      const normalized = model.trim();
+      if (!normalized) {
+        return;
+      }
+
+      setSelectedModel(model);
+      setQuickSwitchModels((current) => {
+        const without = current.filter((item) => item !== normalized);
+        return [normalized, ...without].slice(0, MAX_QUICK_SWITCH_MODELS);
+      });
+      setIsModelPickerVisible(false);
+      setSystemConversation("/model", `Using ${normalized} for upcoming responses.`);
+    },
+    [setQuickSwitchModels, setSelectedModel, setSystemConversation],
+  );
 
   useEffect(() => {
     if (!screenRecordingResult) {
@@ -482,6 +674,7 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
       : `Saved recording to ${videoPath}.`;
 
     setIsResponseVisible(true);
+    setIsModelPickerVisible(false);
     setIsWindowSourceSelectionVisible(false);
     setWindowSourceSelectionItems([]);
     setWindowSourceSelectionError(null);
@@ -505,6 +698,7 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
     }
 
     setIsResponseVisible(true);
+    setIsModelPickerVisible(false);
     setSystemConversation("/record", screenRecordingError);
     clearScreenRecordingError();
     setIsWindowSourceSelectionVisible(false);
@@ -616,6 +810,10 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
 
       if (isUiVisible && event.code === "Escape") {
         event.preventDefault();
+        if (isModelPickerVisible) {
+          setIsModelPickerVisible(false);
+          return;
+        }
         if (isWindowSourceSelectionVisible) {
           setIsWindowSourceSelectionVisible(false);
           setIsResponseVisible(true);
@@ -631,6 +829,7 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
   }, [
     clearPrompt,
     cycleState,
+    isModelPickerVisible,
     isScreenRecording,
     isUiVisible,
     isWindowSourceSelectionVisible,
@@ -640,6 +839,7 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
   useEffect(() => {
     if (showSlashCommands) {
       setIsResponseVisible(true);
+      setIsModelPickerVisible(false);
     }
   }, [showSlashCommands]);
 
@@ -679,13 +879,12 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
           >
             <AssistantInput
               amplitude={amplitude}
-              isDarkTheme={isDarkTheme}
               onClear={clearPrompt}
+              onOpenQuickSwitchModels={handleOpenQuickSwitchModels}
               onOpenSettings={openSettingsWindow}
               onPromptChange={setPrompt}
               onStop={handleStopAction}
               onSubmit={handleSubmit}
-              onToggleTheme={onToggleTheme}
               prompt={prompt}
               readOnly={isPromptLocked}
               showStopAction={showStopAction}
@@ -706,6 +905,23 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
                   >
                     <ChevronDown className="size-3.5" />
                   </motion.span>
+                </button>
+                <button
+                  type="button"
+                  className="sarah-response-toggle-button"
+                  aria-label={isDarkTheme ? "Switch to light theme" : "Switch to dark theme"}
+                  onClick={onToggleTheme}
+                >
+                  {isDarkTheme ? <Sun className="size-3.5" /> : <MoonStar className="size-3.5" />}
+                </button>
+                <button
+                  type="button"
+                  className="sarah-model-marketplace-button"
+                  onClick={openModelsWindow}
+                  aria-label="Open models window"
+                >
+                  <Bot className="size-3.5" />
+                  <span>Models</span>
                 </button>
                 <button
                   type="button"
@@ -730,8 +946,18 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
                 >
                   <ConversationFeed
                     items={conversations}
+                    isScreenAccessDisabled={!preferences.allowScreenRecording}
+                    isModelPickerVisible={isModelPickerVisible}
                     isWindowSourceSelection={isWindowSourceSelectionVisible}
+                    modelPickerEmptyText={modelPickerEmptyText}
+                    modelPickerTitle={modelPickerTitle}
+                    modelOptions={modelPickerItems}
+                    modelOptionsError={modelPickerError}
+                    modelOptionsLoading={isModelPickerLoading}
+                    onModelSelect={handleModelSelect}
+                    onSlashCommandSelect={handleSlashCommandSelect}
                     onWindowSourceSelect={handleWindowSourceSelect}
+                    selectedModel={selectedModel}
                     showSlashCommands={showSlashCommands}
                     slashCommandQuery={slashCommandQuery}
                     slashCommands={filteredSlashCommands}
@@ -762,6 +988,10 @@ function App() {
 
   if (windowType === "history") {
     return <HistoryWindow />;
+  }
+
+  if (windowType === "models") {
+    return <ModelsWindow />;
   }
 
   return <MainOverlayApp isDarkTheme={isDarkTheme} onToggleTheme={toggleTheme} />;

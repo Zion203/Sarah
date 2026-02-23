@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 export type UIVisualState = "idle" | "listening" | "thinking" | "speaking";
 export type ConversationStatus = "thinking" | "completed";
 export const CHAT_HISTORY_STORAGE_KEY = "sarah_chat_history_v1";
+export const OLLAMA_MODEL_STORAGE_KEY = "sarah_ollama_model_v1";
 
 export interface ConversationItem {
   id: string;
@@ -21,7 +22,21 @@ export interface ChatHistoryItem {
 
 const STATE_FLOW: UIVisualState[] = ["idle", "listening", "thinking", "speaking"];
 const HISTORY_LIMIT = 120;
-const OLLAMA_MODEL = "llama3.1:8b";
+const DEFAULT_OLLAMA_MODEL = "llama3.1:8b";
+
+function readStoredModel() {
+  if (typeof window === "undefined") {
+    return DEFAULT_OLLAMA_MODEL;
+  }
+
+  const value = window.localStorage.getItem(OLLAMA_MODEL_STORAGE_KEY);
+  const normalized = value?.trim();
+  if (!normalized) {
+    return DEFAULT_OLLAMA_MODEL;
+  }
+
+  return normalized;
+}
 
 export function readChatHistory(): ChatHistoryItem[] {
   if (typeof window === "undefined") {
@@ -87,6 +102,7 @@ export function useUIState() {
   const [prompt, setPrompt] = useState("");
   const [amplitude, setAmplitude] = useState(0.09);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [selectedModel, setSelectedModelState] = useState(readStoredModel);
   const [isPromptLocked, setIsPromptLocked] = useState(false);
   const completionTimerRef = useRef<number | null>(null);
   const activeRequestIdRef = useRef(0);
@@ -124,6 +140,26 @@ export function useUIState() {
     setPrompt("");
   }, [clearPending]);
 
+  const clearConversation = useCallback(() => {
+    clearPending();
+    setIsPromptLocked(false);
+    setPrompt("");
+    setState("idle");
+    setConversations([]);
+  }, [clearPending]);
+
+  const setSelectedModel = useCallback((model: string) => {
+    const normalized = model.trim();
+    if (!normalized) {
+      return;
+    }
+
+    setSelectedModelState(normalized);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(OLLAMA_MODEL_STORAGE_KEY, normalized);
+    }
+  }, []);
+
   const submitPrompt = useCallback(() => {
     if (isPromptLocked) {
       return;
@@ -156,7 +192,7 @@ export function useUIState() {
       try {
         const response = await invoke<string>("generate_ollama_response", {
           prompt: value,
-          model: OLLAMA_MODEL,
+          model: selectedModel,
         });
 
         if (activeRequestIdRef.current !== requestId) {
@@ -230,7 +266,7 @@ export function useUIState() {
         setState("idle");
       }
     })();
-  }, [clearPending, isPromptLocked, prompt]);
+  }, [clearPending, isPromptLocked, prompt, selectedModel]);
 
   const stopResponse = useCallback(() => {
     clearPending();
@@ -282,12 +318,15 @@ export function useUIState() {
 
   return {
     amplitude,
+    clearConversation,
     clearPrompt,
     conversations,
     cycleState,
     isPromptLocked,
     prompt,
+    selectedModel,
     setPrompt,
+    setSelectedModel,
     setSystemConversation,
     setState,
     state,
