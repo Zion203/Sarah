@@ -1,10 +1,25 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ConversationItem } from "@/hooks/useUIState";
+import type { DesktopWindowSource } from "@/types/screenSources";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
+
+interface SlashCommandItem {
+  command: string;
+  description: string;
+}
 
 interface ConversationFeedProps {
   items: ConversationItem[];
+  isWindowSourceSelection?: boolean;
+  onWindowSourceSelect?: (source: DesktopWindowSource) => void;
+  showSlashCommands?: boolean;
+  slashCommandQuery?: string;
+  slashCommands?: SlashCommandItem[];
+  windowSourceError?: null | string;
+  windowSourceLoading?: boolean;
+  windowSources?: DesktopWindowSource[];
 }
 
 const THINKING_PHRASES = [
@@ -34,13 +49,23 @@ function typingChunkSizeByLength(length: number) {
   return 1;
 }
 
-function ConversationFeed({ items }: ConversationFeedProps) {
+function ConversationFeed({
+  isWindowSourceSelection = false,
+  items,
+  onWindowSourceSelect,
+  showSlashCommands = false,
+  slashCommandQuery = "",
+  slashCommands = [],
+  windowSourceError = null,
+  windowSourceLoading = false,
+  windowSources = [],
+}: ConversationFeedProps) {
   const scrollRef = useRef<HTMLElement | null>(null);
   const [phraseIndex, setPhraseIndex] = useState(0);
   const [typedResponse, setTypedResponse] = useState("");
   const currentItem = items.length > 0 ? items[items.length - 1] : undefined;
   const isThinking = currentItem?.status === "thinking";
-  const isEmpty = !currentItem;
+  const isEmpty = !currentItem && !showSlashCommands;
   const thinkingPhrase = THINKING_PHRASES[phraseIndex];
   const isTypewriting =
     currentItem?.status === "completed" &&
@@ -95,24 +120,43 @@ function ConversationFeed({ items }: ConversationFeedProps) {
   return (
     <section
       ref={scrollRef}
-      className={`sarah-chat-thread ${isEmpty ? "sarah-chat-thread--empty" : ""}`}
+      className={`sarah-chat-thread ${isEmpty ? "sarah-chat-thread--empty" : ""} ${
+        showSlashCommands ? "sarah-chat-thread--commands" : ""
+      }`}
       aria-label="Current response panel"
     >
-      {isEmpty ? (
-        <div className="sarah-chat-empty">
-          <p className="sarah-chat-empty__badge">
-            <span className="sarah-chat-empty__badge-dot" />
-            Ready for your prompt
+      {showSlashCommands ? (
+        <>
+          <p className="sarah-command-title">
+            {slashCommandQuery ? `Commands matching "/${slashCommandQuery}"` : "Available commands"}
           </p>
-          <p className="sarah-chat-empty__title">Response panel is waiting</p>
-          <p className="sarah-chat-empty__subtitle">
-            Ask anything and Sarah will answer right here.
+          {slashCommands.length === 0 ? (
+            <p className="sarah-command-empty">
+              No commands match <code>/{slashCommandQuery}</code>.
+            </p>
+          ) : (
+            slashCommands.map((item) => (
+              <article key={item.command} className="sarah-command-item">
+                <p className="sarah-command-item__command">
+                  <code>{item.command}</code>
+                </p>
+                <p className="sarah-command-item__description">{item.description}</p>
+              </article>
+            ))
+          )}
+        </>
+      ) : isEmpty ? (
+        <>
+          <p className="sarah-empty-description">Ask anything and Sarah will answer right here.</p>
+          <p className="sarah-empty-shortcut">
+            <span>Shortcut</span>
+            <KbdGroup>
+              <Kbd>Ctrl</Kbd>
+              <span aria-hidden="true">+</span>
+              <Kbd>Space</Kbd>
+            </KbdGroup>
           </p>
-          <div className="sarah-chat-empty__hints">
-            <span className="sarah-chat-empty__hint">Try: Summarize this code</span>
-            <span className="sarah-chat-empty__hint">Shortcut: Ctrl + Space</span>
-          </div>
-        </div>
+        </>
       ) : (
         <>
           <p className="sarah-response-status">
@@ -145,20 +189,50 @@ function ConversationFeed({ items }: ConversationFeedProps) {
               "Response ready"
             )}
           </p>
-          {currentItem.status === "thinking" ? (
+          {currentItem?.status === "thinking" ? (
             <div className="sarah-response-skeleton" aria-label="Response is loading">
               <span className="sarah-response-skeleton__line" />
               <span className="sarah-response-skeleton__line sarah-response-skeleton__line--wide" />
               <span className="sarah-response-skeleton__line sarah-response-skeleton__line--mid" />
             </div>
           ) : (
-            <p className="sarah-response-text">
-              {typedResponse}
-              <span
-                className={`sarah-response-text__cursor ${isTypewriting ? "" : "sarah-response-text__cursor--hidden"}`}
-                aria-hidden="true"
-              />
-            </p>
+            <>
+              <p className="sarah-response-text">
+                {typedResponse}
+                <span
+                  className={`sarah-response-text__cursor ${isTypewriting ? "" : "sarah-response-text__cursor--hidden"}`}
+                  aria-hidden="true"
+                />
+              </p>
+              {isWindowSourceSelection && (
+                <section className="sarah-window-source-panel" aria-label="Active windows to capture">
+                  <p className="sarah-window-source-panel__title">Active windows</p>
+                  {windowSourceLoading ? (
+                    <p className="sarah-window-source-panel__state">Loading active windows...</p>
+                  ) : windowSourceError ? (
+                    <p className="sarah-window-source-panel__state">{windowSourceError}</p>
+                  ) : windowSources.length === 0 ? (
+                    <p className="sarah-window-source-panel__state">
+                      No capturable windows found. Open a target window and retry.
+                    </p>
+                  ) : (
+                    <div className="sarah-window-source-list">
+                      {windowSources.map((source) => (
+                        <button
+                          key={`${source.id}-${source.title}`}
+                          type="button"
+                          className="sarah-window-source-list__item"
+                          onClick={() => onWindowSourceSelect?.(source)}
+                        >
+                          <span className="sarah-window-source-list__title">{source.title}</span>
+                          <span className="sarah-window-source-list__meta">{source.processName}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              )}
+            </>
           )}
         </>
       )}

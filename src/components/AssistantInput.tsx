@@ -94,7 +94,6 @@ function AssistantInput({
           className="sarah-input-orb-button"
           onClick={() => setOrbPaletteIndex((current) => (current + 1) % ORB_EASTER_EGG_COLORS.length)}
           aria-label="Cycle orb color"
-          title="Easter egg: change orb colors"
         >
           <Orb amplitude={amplitude} state={state} colors={orbColors} />
         </button>
@@ -126,7 +125,6 @@ function AssistantInput({
           onClick={onToggleTheme}
           className="sarah-action-button sarah-action-button--theme"
           aria-label={isDarkTheme ? "Switch to light theme" : "Switch to dark theme"}
-          title={isDarkTheme ? "Switch to light theme" : "Switch to dark theme"}
         >
           {isDarkTheme ? <Sun className="size-3.5" /> : <MoonStar className="size-3.5" />}
         </Button>
@@ -137,7 +135,6 @@ function AssistantInput({
           onClick={showStopAction ? onStop : onOpenSettings}
           className={`sarah-action-button ${showStopAction ? "sarah-action-button--stop" : "sarah-action-button--settings"}`}
           aria-label={showStopAction ? "Stop response" : "Open settings"}
-          title={showStopAction ? "Stop response" : "Open settings"}
         >
           {showStopAction ? (
             <Square className="size-3.5 fill-current" />
