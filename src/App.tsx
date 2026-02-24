@@ -2,14 +2,17 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { LogicalSize, getCurrentWindow } from "@tauri-apps/api/window";
 import { AnimatePresence, motion } from "framer-motion";
-import { Bot, ChevronDown, MoonStar, Store, Sun } from "lucide-react";
+import { AudioLines, Bot, ChevronDown, MoonStar, Store, Sun } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AssistantInput from "@/components/AssistantInput";
 import ConversationFeed from "@/components/ConversationFeed";
 import HistoryWindow from "@/components/HistoryWindow";
+import McpMarketplaceWindow from "@/components/McpMarketplaceWindow";
 import ModelsWindow from "@/components/ModelsWindow";
 import ScreenRecordingHud from "@/components/ScreenRecordingHud";
+import { SpotifyAudioPlayer } from "@/components/SpotifyAudioPlayer";
 import SettingsWindow from "@/components/SettingsWindow";
+import { AudioPlayerProvider } from "@/components/ui/audio-player";
 import { useAppPreferences } from "@/hooks/useAppPreferences";
 import {
   MAX_QUICK_SWITCH_MODELS,
@@ -202,6 +205,7 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
   const [windowSourceSelectionItems, setWindowSourceSelectionItems] = useState<DesktopWindowSource[]>([]);
   const [pendingCaptureIntent, setPendingCaptureIntent] = useState<CaptureIntent | null>(null);
   const [selectedWindowTitle, setSelectedWindowTitle] = useState<null | string>(null);
+  const [isAudioOpen, setIsAudioOpen] = useState(false);
   const {
     amplitude,
     clearConversation,
@@ -591,7 +595,9 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
   }, [isScreenRecording, stopResponse, stopScreenRecording]);
 
   const handleOpenMcpMarketplace = useCallback(() => {
-    console.log("MCP Marketplace clicked. Integrate marketplace window here.");
+    void invoke("open_mcp_window").catch((error) => {
+      console.error("Failed to open MCP window.", error);
+    });
   }, []);
 
   const handleOpenQuickSwitchModels = useCallback(() => {
@@ -638,6 +644,21 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
         setIsModelPickerLoading(false);
       });
   }, [quickSwitchModels, selectedModel, setQuickSwitchModels]);
+
+  const handleToggleAudioWindow = useCallback(() => {
+    if (isAudioOpen) {
+      void invoke("close_audio_window").catch((error) => {
+        console.error("Failed to close audio window.", error);
+      });
+      setIsAudioOpen(false);
+      return;
+    }
+
+    void invoke("open_audio_window").catch((error) => {
+      console.error("Failed to open audio window.", error);
+    });
+    setIsAudioOpen(true);
+  }, [isAudioOpen]);
 
   const handleModelSelect = useCallback(
     (model: string) => {
@@ -782,6 +803,32 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
   }, []);
 
   useEffect(() => {
+    let unlisten: null | (() => void) = null;
+    let disposed = false;
+
+    void listen<boolean>("sarah://audio-window-state", (event) => {
+      setIsAudioOpen(event.payload);
+    })
+      .then((dispose) => {
+        if (disposed) {
+          dispose();
+          return;
+        }
+        unlisten = dispose;
+      })
+      .catch(() => {
+        // Ignore if not running in Tauri context.
+      });
+
+    return () => {
+      disposed = true;
+      if (unlisten) {
+        unlisten();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
       const isTypingTarget =
@@ -890,7 +937,10 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
               showStopAction={showStopAction}
               state={state}
             />
-            <div className="sarah-response-toolbar" data-tauri-disable-drag-region="true">
+            <div
+              className="sarah-response-toolbar"
+              data-tauri-disable-drag-region="true"
+            >
               <div className="sarah-response-toolbar__actions">
                 <button
                   type="button"
@@ -922,6 +972,16 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
                 >
                   <Bot className="size-3.5" />
                   <span>Models</span>
+                </button>
+                <button
+                  type="button"
+                  className="sarah-audio-toggle-button"
+                  onClick={handleToggleAudioWindow}
+                  aria-pressed={isAudioOpen}
+                  title={isAudioOpen ? "Hide audio player" : "Show audio player"}
+                >
+                  <AudioLines className="size-3.5" />
+                  <span>Audio</span>
                 </button>
                 <button
                   type="button"
@@ -982,19 +1042,34 @@ function App() {
   );
   const { isDarkTheme, theme, toggleTheme } = useTheme();
 
-  if (windowType === "settings") {
-    return <SettingsWindow onToggleTheme={toggleTheme} theme={theme} />;
-  }
-
-  if (windowType === "history") {
-    return <HistoryWindow />;
-  }
-
-  if (windowType === "models") {
-    return <ModelsWindow />;
-  }
-
-  return <MainOverlayApp isDarkTheme={isDarkTheme} onToggleTheme={toggleTheme} />;
+  return (
+    <AudioPlayerProvider>
+      {windowType === "settings" ? (
+        <SettingsWindow onToggleTheme={toggleTheme} theme={theme} />
+      ) : windowType === "history" ? (
+        <HistoryWindow />
+      ) : windowType === "models" ? (
+        <ModelsWindow />
+      ) : windowType === "mcp" ? (
+        <McpMarketplaceWindow />
+      ) : windowType === "audio" ? (
+        <main className="sarah-audio-window" aria-label="Spotify audio window">
+          <SpotifyAudioPlayer
+            isOpen
+            draggable={false}
+            autoplayOnOpen
+            onOpenChange={(open) => {
+              if (!open) {
+                void invoke("close_audio_window");
+              }
+            }}
+          />
+        </main>
+      ) : (
+        <MainOverlayApp isDarkTheme={isDarkTheme} onToggleTheme={toggleTheme} />
+      )}
+    </AudioPlayerProvider>
+  );
 }
 
 export default App;
