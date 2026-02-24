@@ -21,4 +21,10 @@ dist-ssr
 *.ntvs*
 *.njsproj
 *.sln
-*.sw?
+
+# MCP Server
+mcp/spotify-mcp-server/node_modules
+mcp/spotify-mcp-server/spotify-config.json
+mcp/spotify-mcp-server/build
+mcp/spotify-mcp-server/dist
+
