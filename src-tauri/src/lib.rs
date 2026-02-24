@@ -1,8 +1,11 @@
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder,
+    AppHandle, Emitter, Manager, PhysicalPosition, Runtime, WebviewUrl, WebviewWindowBuilder,
 };
+use std::path::Path;
+use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
 use serde::Serialize;
 use std::time::Duration;
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
@@ -107,6 +110,22 @@ async fn fetch_ollama_tags() -> Result<OllamaTagsResponse, String> {
         .map_err(|error| format!("Invalid Ollama tags response: {error}"))
 }
 
+struct SpotifyMcpState(Mutex<Option<Child>>);
+
+impl Default for SpotifyMcpState {
+    fn default() -> Self {
+        Self(Mutex::new(None))
+    }
+}
+
+const AUDIO_WINDOW_WIDTH: f64 = 380.0;
+const AUDIO_WINDOW_HEIGHT: f64 = 140.0;
+
+#[derive(serde::Serialize, Clone)]
+struct AudioCommandPayload {
+    action: String,
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -123,7 +142,7 @@ async fn generate_ollama_response(prompt: String, model: Option<String>) -> Resu
     let model = model
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "llama3.1:8b".to_string());
+        .unwrap_or_else(|| "qwen3:4b".to_string());
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(180))
@@ -375,6 +394,316 @@ async fn open_history_window(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn open_mcp_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("mcp") {
+        let _ = window.center();
+        let _ = window.show();
+        let _ = window.set_focus();
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(
+        &app,
+        "mcp",
+        WebviewUrl::App("index.html?window=mcp".into()),
+    )
+    .title("Sarah AI MCP Marketplace")
+    .inner_size(980.0, 680.0)
+    .min_inner_size(840.0, 560.0)
+    .resizable(true)
+    .maximizable(true)
+    .minimizable(true)
+    .decorations(false)
+    .always_on_top(false)
+    .center()
+    .build()
+    .map_err(|error| error.to_string())?;
+
+    Ok(())
+}
+
+fn position_audio_window(window: &tauri::WebviewWindow) {
+    if let Ok(Some(monitor)) = window.primary_monitor() {
+        let size = monitor.size();
+        let position = monitor.position();
+        let margin = 64;
+        let x = position.x + margin;
+        let y = position.y + size.height as i32 - AUDIO_WINDOW_HEIGHT as i32 - margin;
+        let _ = window.set_position(PhysicalPosition::new(x, y));
+    }
+}
+
+#[tauri::command]
+async fn open_audio_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("audio") {
+        let _ = window.set_resizable(false);
+        let _ = window.set_maximizable(false);
+        let _ = window.set_minimizable(false);
+        let _ = window.set_always_on_top(true);
+        let _ = window.set_shadow(false);
+        let _ = window.set_skip_taskbar(true);
+        position_audio_window(&window);
+        let _ = window.show();
+        let _ = window.set_focus();
+        let _ = app.emit("sarah://audio-window-state", true);
+        return Ok(());
+    }
+
+    let window = WebviewWindowBuilder::new(
+        &app,
+        "audio",
+        WebviewUrl::App("index.html?window=audio".into()),
+    )
+    .title("Spotify Player")
+    .inner_size(AUDIO_WINDOW_WIDTH, AUDIO_WINDOW_HEIGHT)
+    .resizable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .decorations(false)
+    .transparent(true)
+    .shadow(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .build()
+    .map_err(|error| error.to_string())?;
+
+    position_audio_window(&window);
+    let _ = window.show();
+    let _ = window.set_focus();
+    let _ = app.emit("sarah://audio-window-state", true);
+    Ok(())
+}
+
+#[tauri::command]
+async fn close_audio_window(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("audio") {
+        let _ = window.hide();
+    }
+    let _ = app.emit("sarah://audio-window-state", false);
+    Ok(())
+}
+
+#[tauri::command]
+async fn emit_audio_command(app: AppHandle, action: String) -> Result<(), String> {
+    let payload = AudioCommandPayload {
+        action: action.trim().to_string(),
+    };
+    let _ = app.emit("sarah://audio-control", payload);
+    Ok(())
+}
+
+#[tauri::command]
+fn run_spotify_tool(
+    server_root: String,
+    tool: String,
+    args: serde_json::Value,
+) -> Result<String, String> {
+    let root = Path::new(&server_root);
+    if !root.exists() {
+        return Err("Spotify MCP server root not found.".to_string());
+    }
+
+    let runner = root.join("tool-runner.js");
+    if !runner.exists() {
+        return Err("tool-runner.js not found. Rebuild the MCP server.".to_string());
+    }
+
+    let args_payload = args.to_string();
+    let output = Command::new("node")
+        .arg(runner)
+        .arg(tool)
+        .arg(args_payload)
+        .current_dir(root)
+        .output()
+        .map_err(|error| format!("Failed to run Spotify MCP tool: {error}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if !stderr.is_empty() {
+            return Err(stderr);
+        }
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if stdout.is_empty() {
+        return Err("Spotify MCP tool returned empty output.".to_string());
+    }
+
+    Ok(stdout)
+}
+
+#[tauri::command]
+fn start_spotify_mcp(
+    entry_path: String,
+    state: tauri::State<SpotifyMcpState>,
+) -> Result<(), String> {
+    let entry_path = entry_path.trim().to_string();
+    if entry_path.is_empty() {
+        return Err("Missing Spotify MCP entry path.".to_string());
+    }
+
+    let entry = Path::new(&entry_path);
+    if !entry.exists() {
+        return Err(format!("Spotify MCP entry not found at {entry_path}."));
+    }
+
+    let mut guard = state.0.lock().map_err(|_| "Spotify MCP state locked.")?;
+    if guard.is_some() {
+        return Err("Spotify MCP is already running.".to_string());
+    }
+
+    let working_dir = entry
+        .parent()
+        .map(|path| path.to_path_buf())
+        .unwrap_or_else(|| Path::new(".").to_path_buf());
+
+    let child = Command::new("node")
+        .arg(entry_path)
+        .current_dir(working_dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Failed to start Spotify MCP: {error}"))?;
+
+    *guard = Some(child);
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_spotify_mcp(state: tauri::State<SpotifyMcpState>) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|_| "Spotify MCP state locked.")?;
+    if let Some(mut child) = guard.take() {
+        child
+            .kill()
+            .map_err(|error| format!("Failed to stop Spotify MCP: {error}"))?;
+        let _ = child.wait();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn spotify_mcp_status(state: tauri::State<SpotifyMcpState>) -> Result<bool, String> {
+    let mut guard = state.0.lock().map_err(|_| "Spotify MCP state locked.")?;
+    if let Some(child) = guard.as_mut() {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                *guard = None;
+                Ok(false)
+            }
+            Ok(None) => Ok(true),
+            Err(_) => Ok(false),
+        }
+    } else {
+        Ok(false)
+    }
+}
+
+fn npm_command() -> Command {
+    if cfg!(windows) {
+        let mut cmd = Command::new("cmd");
+        cmd.arg("/c").arg("npm");
+        cmd
+    } else {
+        Command::new("npm")
+    }
+}
+
+#[tauri::command]
+fn write_spotify_config(
+    server_root: String,
+    client_id: String,
+    client_secret: String,
+    redirect_uri: String,
+) -> Result<(), String> {
+    let server_root = server_root.trim().to_string();
+    if server_root.is_empty() {
+        return Err("Missing Spotify MCP server root.".to_string());
+    }
+
+    let config_path = Path::new(&server_root).join("spotify-config.json");
+    let mut existing: serde_json::Value = if config_path.exists() {
+        let raw = std::fs::read_to_string(&config_path)
+            .map_err(|error| format!("Failed to read existing config: {error}"))?;
+        serde_json::from_str(&raw).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    existing["clientId"] = serde_json::Value::String(client_id.trim().to_string());
+    existing["clientSecret"] = serde_json::Value::String(client_secret.trim().to_string());
+    existing["redirectUri"] = serde_json::Value::String(redirect_uri.trim().to_string());
+
+    let payload = serde_json::to_string_pretty(&existing)
+        .map_err(|error| format!("Failed to serialize config: {error}"))?;
+    std::fs::write(&config_path, payload)
+        .map_err(|error| format!("Failed to write config: {error}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn build_spotify_mcp(server_root: String) -> Result<(), String> {
+    let server_root = server_root.trim().to_string();
+    if server_root.is_empty() {
+        return Err("Missing Spotify MCP server root.".to_string());
+    }
+
+    let package_path = Path::new(&server_root).join("package.json");
+    if !package_path.exists() {
+        return Err("Spotify MCP package.json not found. Check the server path.".to_string());
+    }
+
+    let install_status = npm_command()
+        .arg("install")
+        .current_dir(&server_root)
+        .status()
+        .map_err(|error| format!("Failed to run npm install: {error}"))?;
+
+    if !install_status.success() {
+        return Err(format!("npm install failed with status {install_status}."));
+    }
+
+    let build_status = npm_command()
+        .arg("run")
+        .arg("build")
+        .current_dir(&server_root)
+        .status()
+        .map_err(|error| format!("Failed to run npm build: {error}"))?;
+
+    if !build_status.success() {
+        return Err(format!("npm run build failed with status {build_status}."));
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn run_spotify_oauth(server_root: String) -> Result<(), String> {
+    let server_root = server_root.trim().to_string();
+    if server_root.is_empty() {
+        return Err("Missing Spotify MCP server root.".to_string());
+    }
+
+    let auth_path = Path::new(&server_root).join("build").join("auth.js");
+    if !auth_path.exists() {
+        return Err("Spotify MCP auth script not found. Run `npm run build` in the server folder first.".to_string());
+    }
+
+    let status = Command::new("node")
+        .arg(auth_path)
+        .current_dir(server_root)
+        .status()
+        .map_err(|error| format!("Failed to run Spotify OAuth: {error}"))?;
+
+    if !status.success() {
+        return Err(format!("Spotify OAuth exited with status {status}."));
+    }
+
+    Ok(())
+}
+
 fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window("main") {
         if window.is_visible().unwrap_or(false) {
@@ -393,6 +722,7 @@ fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(SpotifyMcpState::default())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.center();
@@ -458,13 +788,24 @@ pub fn run() {
             pull_ollama_model,
             open_settings_window,
             open_models_window,
-            open_history_window,
             native_capture::list_active_windows,
             native_capture::get_default_capture_directory,
             native_capture::pick_capture_output_directory,
             native_capture::start_native_screen_recording,
             native_capture::stop_native_screen_recording,
-            native_capture::take_native_screenshot
+            native_capture::take_native_screenshot,
+            open_history_window,
+            open_mcp_window,
+            open_audio_window,
+            close_audio_window,
+            emit_audio_command,
+            run_spotify_tool,
+            start_spotify_mcp,
+            stop_spotify_mcp,
+            spotify_mcp_status,
+            write_spotify_config,
+            build_spotify_mcp,
+            run_spotify_oauth
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
