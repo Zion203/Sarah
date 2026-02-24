@@ -62,7 +62,7 @@ function useAudioLevels(
   const rafRef = useRef<number | null>(null)
 
   useEffect(() => {
-    if (!isActive || !audioRef.current || analyserRef.current) return
+    if (!audioRef.current || analyserRef.current) return
 
     const AudioContextImpl =
       window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
@@ -70,12 +70,13 @@ function useAudioLevels(
     if (!AudioContextImpl) return
 
     try {
+      const audioEl = audioRef.current
       const context = new AudioContextImpl()
       const analyser = context.createAnalyser()
       analyser.fftSize = 256
       analyser.smoothingTimeConstant = 0.82
 
-      const source = context.createMediaElementSource(audioRef.current)
+      const source = context.createMediaElementSource(audioEl)
       source.connect(analyser)
       analyser.connect(context.destination)
 
@@ -83,14 +84,19 @@ function useAudioLevels(
       analyserRef.current = analyser
       dataRef.current = new Uint8Array(analyser.frequencyBinCount)
 
-      if (context.state === "suspended") {
-        void context.resume()
+      const handlePlay = () => {
+        if (context.state === "suspended") {
+          void context.resume()
+        }
       }
+
+      audioEl.addEventListener("play", handlePlay)
 
       return () => {
         if (rafRef.current) {
           cancelAnimationFrame(rafRef.current)
         }
+        audioEl.removeEventListener("play", handlePlay)
         source.disconnect()
         analyser.disconnect()
         void context.close()
@@ -98,7 +104,7 @@ function useAudioLevels(
     } catch (error) {
       console.warn("Audio visualizer unavailable:", error)
     }
-  }, [audioRef, isActive])
+  }, [audioRef])
 
   useEffect(() => {
     if (!analyserRef.current || !dataRef.current) return
@@ -245,7 +251,7 @@ export function SpotifyAudioPlayer({
       return
     }
 
-    if (autoplayAttemptedRef.current || player.isPlaying) {
+    if (autoplayAttemptedRef.current || player.activeItem) {
       return
     }
 
@@ -256,7 +262,7 @@ export function SpotifyAudioPlayer({
     void player.play(item).catch(() => {
       // Autoplay can be blocked without a direct user gesture.
     })
-  }, [autoplayOnOpen, isOpen, player, player.activeItem, player.isPlaying, trackItems])
+  }, [autoplayOnOpen, isOpen, player, player.activeItem, trackItems])
 
   const isDraggable = draggable
 

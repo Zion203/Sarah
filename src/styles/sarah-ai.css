@@ -1061,6 +1061,41 @@ body {
   justify-content: center;
 }
 
+.sarah-audio-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.sarah-audio-list__item {
+  border: 1px solid color-mix(in oklab, var(--foreground) 18%, transparent);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--foreground);
+  padding: 6px 10px;
+  text-align: left;
+  font-size: 0.85rem;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sarah-audio-list__item:hover {
+  background: color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+
+.sarah-audio-list__item--active {
+  border-color: var(--foreground);
+  background: color-mix(in oklab, var(--foreground) 18%, transparent);
+}
+
+.sarah-audio-element {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .sarah-audio-play[data-slot="button"] {
   width: 2.4rem;
   height: 2.4rem;
