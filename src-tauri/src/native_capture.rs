@@ -11,6 +11,7 @@ use rfd::FileDialog;
 use windows_capture::capture::{Context, GraphicsCaptureApiHandler};
 use windows_capture::encoder::{
     AudioSettingsBuilder, ContainerSettingsBuilder, VideoEncoder, VideoSettingsBuilder,
+    VideoSettingsSubType,
 };
 use windows_capture::frame::{Frame, ImageFormat};
 use windows_capture::graphics_capture_api::InternalCaptureControl;
@@ -42,7 +43,6 @@ pub struct NativeRecordingResult {
     pub duration_ms: u64,
     pub ended_at_ms: u64,
     pub mime_type: String,
-    pub screenshot_path: Option<String>,
     pub started_at_ms: u64,
     pub video_path: String,
 }
@@ -58,7 +58,6 @@ pub struct NativeScreenshotResult {
 struct RecordingArtifacts {
     duration_ms: u64,
     ended_at_ms: u64,
-    screenshot_path: Option<PathBuf>,
     video_path: PathBuf,
 }
 
@@ -76,8 +75,6 @@ struct NativeCaptureState {
 
 struct EncoderCapture {
     encoder: Option<VideoEncoder>,
-    screenshot_path: Option<PathBuf>,
-    screenshot_saved: bool,
     stop_flag: Arc<AtomicBool>,
 }
 
@@ -88,11 +85,12 @@ struct ScreenshotCapture {
 
 impl GraphicsCaptureApiHandler for EncoderCapture {
     type Error = Box<dyn std::error::Error + Send + Sync>;
-    type Flags = (Arc<AtomicBool>, Option<PathBuf>, PathBuf, u32, u32);
+    type Flags = (Arc<AtomicBool>, PathBuf, u32, u32);
 
     fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
-        let (stop_flag, screenshot_path, video_path, width, height) = ctx.flags;
-        let video_settings = VideoSettingsBuilder::new(width, height);
+        let (stop_flag, video_path, width, height) = ctx.flags;
+        let video_settings =
+            VideoSettingsBuilder::new(width, height).sub_type(VideoSettingsSubType::H264);
         let encoder = VideoEncoder::new(
             video_settings,
             AudioSettingsBuilder::default().disabled(true),
@@ -102,8 +100,6 @@ impl GraphicsCaptureApiHandler for EncoderCapture {
 
         Ok(Self {
             encoder: Some(encoder),
-            screenshot_path,
-            screenshot_saved: false,
             stop_flag,
         })
     }
@@ -113,13 +109,6 @@ impl GraphicsCaptureApiHandler for EncoderCapture {
         frame: &mut Frame,
         capture_control: InternalCaptureControl,
     ) -> Result<(), Self::Error> {
-        if !self.screenshot_saved {
-            if let Some(screenshot_path) = &self.screenshot_path {
-                let _ = frame.save_as_image(screenshot_path, ImageFormat::Png);
-            }
-            self.screenshot_saved = true;
-        }
-
         if let Some(encoder) = self.encoder.as_mut() {
             encoder.send_frame(frame)?;
         }
@@ -197,13 +186,12 @@ fn resolve_capture_directory(output_directory: Option<String>) -> Result<PathBuf
     Ok(base)
 }
 
-fn recording_output_paths(output_directory: Option<String>) -> Result<(PathBuf, PathBuf), String> {
+fn recording_output_path(output_directory: Option<String>) -> Result<PathBuf, String> {
     let base = resolve_capture_directory(output_directory)?;
 
     let stamp = now_ms();
     let video = base.join(format!("sarah-screen-recording-{stamp}.mp4"));
-    let screenshot = base.join(format!("sarah-screen-capture-{stamp}.png"));
-    Ok((video, screenshot))
+    Ok(video)
 }
 
 fn screenshot_output_path(output_directory: Option<String>) -> Result<PathBuf, String> {
@@ -257,18 +245,36 @@ fn capture_single_screenshot(
         CaptureSurface::Screen => {
             let monitor = Monitor::primary()
                 .map_err(|error| format!("Failed to access primary monitor: {error}"))?;
-            let settings = Settings::new(
-                monitor,
-                CursorCaptureSettings::Default,
-                DrawBorderSettings::WithoutBorder,
-                SecondaryWindowSettings::Default,
-                MinimumUpdateIntervalSettings::Default,
-                DirtyRegionSettings::Default,
-                ColorFormat::Bgra8,
-                screenshot_path,
-            );
-            ScreenshotCapture::start(settings)
-                .map_err(|error| format!("Native screenshot failed: {error}"))?;
+            let mut last_error = None;
+            for color_format in [ColorFormat::Rgba8, ColorFormat::Bgra8] {
+                let settings = Settings::new(
+                    monitor,
+                    CursorCaptureSettings::Default,
+                    DrawBorderSettings::WithoutBorder,
+                    SecondaryWindowSettings::Default,
+                    MinimumUpdateIntervalSettings::Default,
+                    DirtyRegionSettings::Default,
+                    color_format,
+                    screenshot_path.clone(),
+                );
+                match ScreenshotCapture::start_free_threaded(settings) {
+                    Ok(control) => match control.wait() {
+                        Ok(()) => {
+                            last_error = None;
+                            break;
+                        }
+                        Err(error) => {
+                            last_error = Some(format!("Native screenshot failed: {error}"));
+                        }
+                    },
+                    Err(error) => {
+                        last_error = Some(format!("Native screenshot failed: {error}"));
+                    }
+                }
+            }
+            if let Some(error) = last_error {
+                return Err(error);
+            }
         }
         CaptureSurface::Window => {
             let window = window_hwnd
@@ -279,18 +285,36 @@ fn capture_single_screenshot(
                 return Err("Selected window is no longer valid for capture.".to_string());
             }
 
-            let settings = Settings::new(
-                window,
-                CursorCaptureSettings::Default,
-                DrawBorderSettings::WithoutBorder,
-                SecondaryWindowSettings::Default,
-                MinimumUpdateIntervalSettings::Default,
-                DirtyRegionSettings::Default,
-                ColorFormat::Bgra8,
-                screenshot_path,
-            );
-            ScreenshotCapture::start(settings)
-                .map_err(|error| format!("Native screenshot failed: {error}"))?;
+            let mut last_error = None;
+            for color_format in [ColorFormat::Rgba8, ColorFormat::Bgra8] {
+                let settings = Settings::new(
+                    window,
+                    CursorCaptureSettings::Default,
+                    DrawBorderSettings::WithoutBorder,
+                    SecondaryWindowSettings::Default,
+                    MinimumUpdateIntervalSettings::Default,
+                    DirtyRegionSettings::Default,
+                    color_format,
+                    screenshot_path.clone(),
+                );
+                match ScreenshotCapture::start_free_threaded(settings) {
+                    Ok(control) => match control.wait() {
+                        Ok(()) => {
+                            last_error = None;
+                            break;
+                        }
+                        Err(error) => {
+                            last_error = Some(format!("Native screenshot failed: {error}"));
+                        }
+                    },
+                    Err(error) => {
+                        last_error = Some(format!("Native screenshot failed: {error}"));
+                    }
+                }
+            }
+            if let Some(error) = last_error {
+                return Err(error);
+            }
         }
     }
 
@@ -335,7 +359,6 @@ fn spawn_capture_thread(
     window_hwnd: Option<u64>,
     stop_flag: Arc<AtomicBool>,
     video_path: PathBuf,
-    screenshot_path: PathBuf,
 ) -> JoinHandle<Result<RecordingArtifacts, String>> {
     thread::spawn(move || {
         let started = Instant::now();
@@ -360,7 +383,6 @@ fn spawn_capture_thread(
                     ColorFormat::Bgra8,
                     (
                         stop_flag.clone(),
-                        Some(screenshot_path.clone()),
                         video_path.clone(),
                         width,
                         height,
@@ -389,7 +411,6 @@ fn spawn_capture_thread(
                     ColorFormat::Bgra8,
                     (
                         stop_flag.clone(),
-                        Some(screenshot_path.clone()),
                         video_path.clone(),
                         width,
                         height,
@@ -402,16 +423,10 @@ fn spawn_capture_thread(
 
         let duration_ms = started.elapsed().as_millis() as u64;
         let ended_at_ms = now_ms();
-        let screenshot = if Path::new(&screenshot_path).exists() {
-            Some(screenshot_path)
-        } else {
-            None
-        };
 
         Ok(RecordingArtifacts {
             duration_ms,
             ended_at_ms,
-            screenshot_path: screenshot,
             video_path,
         })
     })
@@ -484,16 +499,11 @@ pub fn start_native_screen_recording(
 
     let raw_window_handle = parse_window_handle(window_hwnd)?;
 
-    let (video_path, screenshot_path) = recording_output_paths(output_directory)?;
+    let video_path = recording_output_path(output_directory)?;
     let started_at_ms = now_ms();
     let stop_flag = Arc::new(AtomicBool::new(false));
-    let join_handle = spawn_capture_thread(
-        surface,
-        raw_window_handle,
-        stop_flag.clone(),
-        video_path,
-        screenshot_path,
-    );
+    let join_handle =
+        spawn_capture_thread(surface, raw_window_handle, stop_flag.clone(), video_path);
 
     guard.active = Some(NativeCaptureSession {
         join_handle,
@@ -529,9 +539,6 @@ pub fn stop_native_screen_recording() -> Result<NativeRecordingResult, String> {
         duration_ms: result.duration_ms,
         ended_at_ms: result.ended_at_ms,
         mime_type: "video/mp4".to_string(),
-        screenshot_path: result
-            .screenshot_path
-            .map(|path| path.to_string_lossy().to_string()),
         started_at_ms,
         video_path: result.video_path.to_string_lossy().to_string(),
     })

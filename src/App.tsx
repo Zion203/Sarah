@@ -357,7 +357,33 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
     (surface: "screen" | "window", sourceName?: string, windowHwnd?: string) => {
       void (async () => {
         setIsResponseVisible(true);
+        const shouldTemporarilyHideMainWindow = surface === "screen";
+        const wasUiVisible = isUiVisible;
+        let didHideMainWindow = false;
+        let shouldRestoreUiVisibility = false;
+
         try {
+          if (shouldTemporarilyHideMainWindow) {
+            if (wasUiVisible) {
+              setIsUiVisible(false);
+              shouldRestoreUiVisibility = true;
+            }
+
+            try {
+              await new Promise<void>((resolve) => {
+                window.setTimeout(resolve, 90);
+              });
+              const currentWindow = getCurrentWindow();
+              await currentWindow.hide();
+              didHideMainWindow = true;
+              await new Promise<void>((resolve) => {
+                window.setTimeout(resolve, 120);
+              });
+            } catch {
+              // Continue capture even if temporary hide is unavailable.
+            }
+          }
+
           const payload: Record<string, unknown> = {
             surface,
           };
@@ -383,24 +409,56 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
           );
           setSelectedWindowTitle(null);
         } catch (error) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : typeof error === "object" &&
-                  error !== null &&
-                  "message" in error &&
-                  typeof (error as { message: unknown }).message === "string"
-                ? (error as { message: string }).message
-                : "Screenshot failed.";
+          const message = (() => {
+            if (error instanceof Error) {
+              return error.message || "Screenshot failed.";
+            }
+            if (typeof error === "string") {
+              return error;
+            }
+            if (
+              typeof error === "object" &&
+              error !== null &&
+              "message" in error &&
+              typeof (error as { message: unknown }).message === "string"
+            ) {
+              return (error as { message: string }).message;
+            }
+
+            try {
+              const serialized = JSON.stringify(error);
+              if (serialized && serialized !== "{}") {
+                return serialized;
+              }
+            } catch {
+              // fall through to String(error)
+            }
+
+            const fallback = String(error);
+            return fallback && fallback !== "[object Object]" ? fallback : "Screenshot failed.";
+          })();
 
           if (message.toLowerCase().includes("denied")) {
             markSurfacePermission(surface, false);
           }
           setSystemConversation("/take", message);
+        } finally {
+          if (didHideMainWindow) {
+            try {
+              const currentWindow = getCurrentWindow();
+              await currentWindow.show();
+            } catch {
+              // Ignore restore failures outside Tauri context.
+            }
+          }
+
+          if (shouldRestoreUiVisibility) {
+            setIsUiVisible(true);
+          }
         }
       })();
     },
-    [captureOutputDirectory, markSurfacePermission, setSystemConversation],
+    [captureOutputDirectory, isUiVisible, markSurfacePermission, setIsUiVisible, setSystemConversation],
   );
 
   const loadWindowSources = useCallback((intent: CaptureIntent) => {
@@ -450,6 +508,25 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
       return;
     }
 
+    if (intent === "take") {
+      if (!preferences.screenPermissions.screen) {
+        setIsResponseVisible(true);
+        setSystemConversation(
+          "/take",
+          "Entire screen permission is missing. Grant it in Settings > Permissions.",
+        );
+        return;
+      }
+
+      setIsWindowSourceSelectionVisible(false);
+      setWindowSourceSelectionItems([]);
+      setWindowSourceSelectionError(null);
+      setPendingCaptureIntent(null);
+      setSelectedWindowTitle(null);
+      takeScreenshotWithSurface("screen");
+      return;
+    }
+
     const preferredSurface = preferences.screenCaptureSurface;
     if (!preferences.screenPermissions[preferredSurface]) {
       setIsResponseVisible(true);
@@ -470,11 +547,7 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
     setWindowSourceSelectionError(null);
     setPendingCaptureIntent(null);
     setSelectedWindowTitle(null);
-    if (intent === "record") {
-      startRecordingWithSurface("screen");
-      return;
-    }
-    takeScreenshotWithSurface("screen");
+    startRecordingWithSurface("screen");
   }, [
     intentCommandLabel,
     loadWindowSources,
@@ -689,10 +762,6 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
     consumedRecordingIdRef.current = screenRecordingResult.id;
 
     const videoPath = screenRecordingResult.videoPath;
-    const screenshotPath = screenRecordingResult.screenshotPath;
-    const captureNotice = screenshotPath
-      ? `Saved recording to ${videoPath} and screenshot to ${screenshotPath}.`
-      : `Saved recording to ${videoPath}.`;
 
     setIsResponseVisible(true);
     setIsModelPickerVisible(false);
@@ -702,7 +771,7 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
     setPendingCaptureIntent(null);
     setSystemConversation(
       "/record",
-      `Screen recording complete${selectedWindowTitle ? ` for "${selectedWindowTitle}"` : ""} (${formatRecordingDuration(screenRecordingResult.durationMs)}). ${captureNotice}`,
+      `Screen recording complete${selectedWindowTitle ? ` for "${selectedWindowTitle}"` : ""} (${formatRecordingDuration(screenRecordingResult.durationMs)}). Saved recording to ${videoPath}.`,
       true,
     );
     setSelectedWindowTitle(null);

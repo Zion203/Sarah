@@ -116,6 +116,9 @@ function ConversationFeed({
   const isThinking = currentItem?.status === "thinking";
   const isEmpty = !currentItem && !showSlashCommands && !isModelPickerVisible;
   const thinkingPhrase = THINKING_PHRASES[phraseIndex];
+  const explicitThinkingLabel =
+    currentItem?.status === "thinking" ? currentItem.response.trim() : "";
+  const thinkingLabel = explicitThinkingLabel || thinkingPhrase;
   const isTypewriting =
     currentItem?.status === "completed" &&
     typedResponse.length < (currentItem?.response.length ?? 0);
@@ -154,7 +157,7 @@ function ConversationFeed({
   }, [currentItem?.id, currentItem?.status, currentItem?.response]);
 
   useEffect(() => {
-    if (!isThinking) {
+    if (!isThinking || explicitThinkingLabel) {
       setPhraseIndex(0);
       return;
     }
@@ -164,7 +167,7 @@ function ConversationFeed({
     }, 1800);
 
     return () => window.clearInterval(intervalId);
-  }, [isThinking]);
+  }, [explicitThinkingLabel, isThinking]);
 
   const clampWindowTrackX = useCallback(
     (value: number) => {
@@ -322,8 +325,6 @@ function ConversationFeed({
       lastPointerClientXRef.current = event.clientX;
       lastPointerTimestampRef.current = performance.now();
       windowSliderVelocityRef.current = 0;
-      setIsWindowListDragging(true);
-      event.currentTarget.setPointerCapture(event.pointerId);
     },
     [stopWindowTrackAnimation, windowSliderLimits.left, windowTrackX],
   );
@@ -335,12 +336,18 @@ function ConversationFeed({
       }
 
       const deltaX = event.clientX - pointerDownClientXRef.current;
+      if (!hasDraggedWindowListRef.current && Math.abs(deltaX) <= 4) {
+        return;
+      }
+
+      if (!hasDraggedWindowListRef.current) {
+        hasDraggedWindowListRef.current = true;
+        setIsWindowListDragging(true);
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }
+
       const nextX = clampWindowTrackX(pointerDownWindowTrackXRef.current + deltaX);
       windowTrackX.set(nextX);
-
-      if (Math.abs(deltaX) > 4) {
-        hasDraggedWindowListRef.current = true;
-      }
 
       const now = performance.now();
       const elapsed = Math.max(1, now - lastPointerTimestampRef.current);
@@ -362,7 +369,10 @@ function ConversationFeed({
         return;
       }
 
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      if (
+        hasDraggedWindowListRef.current &&
+        event.currentTarget.hasPointerCapture(event.pointerId)
+      ) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
       finishWindowListPointerDrag();
@@ -376,7 +386,10 @@ function ConversationFeed({
         return;
       }
 
-      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      if (
+        hasDraggedWindowListRef.current &&
+        event.currentTarget.hasPointerCapture(event.pointerId)
+      ) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
       finishWindowListPointerDrag();
@@ -532,16 +545,16 @@ function ConversationFeed({
                 <span className="sarah-response-status__phrase-viewport">
                   <AnimatePresence mode="wait" initial={false}>
                     <motion.span
-                      key={thinkingPhrase}
+                      key={thinkingLabel}
                       className="sarah-response-status__phrase"
                       initial={{ y: -14, opacity: 0 }}
                       animate={{ y: 0, opacity: 1 }}
                       exit={{ y: 14, opacity: 0 }}
                       transition={{ duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
                     >
-                      <span className="sarah-response-status__phrase-base">{thinkingPhrase}</span>
+                      <span className="sarah-response-status__phrase-base">{thinkingLabel}</span>
                       <ShimmeringText
-                        text={thinkingPhrase}
+                        text={thinkingLabel}
                         duration={1.05}
                         repeatDelay={0}
                         spread={1.3}

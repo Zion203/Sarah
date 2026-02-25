@@ -6,7 +6,6 @@ import {
   useEffect,
   useMemo,
   useState,
-  type MouseEvent,
 } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,18 +40,6 @@ const MODEL_LIBRARY: ModelLibraryEntry[] = [
   { name: "deepseek-r1:8b", description: "Reasoning-focused distilled model." },
   { name: "gemma2:9b", description: "Reliable instruction model with strong baseline quality." },
 ];
-
-const DRAG_BLOCK_SELECTOR = [
-  "button",
-  "input",
-  "textarea",
-  "select",
-  "option",
-  "a",
-  "[role='button']",
-  ".sarah-models-layout",
-  "[data-tauri-disable-drag-region='true']",
-].join(",");
 
 function normalizeDetailedModel(value: unknown): DetailedOllamaModel | null {
   if (typeof value !== "object" || value === null) {
@@ -187,23 +174,6 @@ function ModelsWindow() {
     void loadInstalledModels();
   }, [loadInstalledModels]);
 
-  const handleWindowMouseDownCapture = async (event: MouseEvent<HTMLElement>) => {
-    if (event.button !== 0 || event.detail > 1) {
-      return;
-    }
-
-    const target = event.target as HTMLElement;
-    if (target.closest(DRAG_BLOCK_SELECTOR)) {
-      return;
-    }
-
-    try {
-      await getCurrentWindow().startDragging();
-    } catch (error) {
-      console.error("Failed to start dragging models window.", error);
-    }
-  };
-
   const handleClose = async () => {
     await getCurrentWindow().close();
   };
@@ -268,11 +238,7 @@ function ModelsWindow() {
   };
 
   return (
-    <main
-      className="sarah-models-window"
-      aria-label="Sarah AI models window"
-      onMouseDownCapture={handleWindowMouseDownCapture}
-    >
+    <main className="sarah-models-window" aria-label="Sarah AI models window">
       <section className="sarah-models-shell">
         <header className="sarah-models-titlebar">
           <div className="sarah-models-titlebar__meta">Models</div>

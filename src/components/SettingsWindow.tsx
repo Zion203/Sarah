@@ -15,7 +15,7 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type ComponentType, type MouseEvent } from "react";
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import { Button } from "@/components/ui/button";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -30,20 +30,6 @@ interface SettingsWindowProps {
 }
 
 type SettingsTab = "general" | "appearance" | "audio" | "permissions";
-const DRAG_BLOCK_SELECTOR = [
-  "button",
-  "input",
-  "textarea",
-  "select",
-  "option",
-  "a",
-  "label",
-  "[role='button']",
-  ".sarah-settings-content",
-  ".sarah-settings-group",
-  "[data-tauri-disable-drag-region='true']",
-  "[contenteditable='true']",
-].join(",");
 
 const SETTINGS_TABS: Array<{
   icon: ComponentType<{ className?: string }>;
@@ -224,29 +210,8 @@ function SettingsWindow({ onToggleTheme, theme }: SettingsWindowProps) {
     }
   };
 
-  const handleWindowMouseDownCapture = async (event: MouseEvent<HTMLElement>) => {
-    if (event.button !== 0 || event.detail > 1) {
-      return;
-    }
-
-    const target = event.target as HTMLElement;
-    if (target.closest(DRAG_BLOCK_SELECTOR)) {
-      return;
-    }
-
-    try {
-      await getCurrentWindow().startDragging();
-    } catch (error) {
-      console.error("Failed to start dragging settings window.", error);
-    }
-  };
-
   return (
-    <main
-      className="sarah-settings-window"
-      aria-label="Sarah AI settings window"
-      onMouseDownCapture={handleWindowMouseDownCapture}
-    >
+    <main className="sarah-settings-window" aria-label="Sarah AI settings window">
       <section className="sarah-settings-macos">
         <header
           className="sarah-settings-titlebar"
