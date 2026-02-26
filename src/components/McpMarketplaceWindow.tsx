@@ -62,6 +62,11 @@ const DEFAULT_AUTH_NOTICE: SpotifyAuthNotice = {
   message: "OAuth not completed yet. Run OAuth after saving credentials.",
 };
 
+interface McpMarketplaceWindowProps {
+  embedded?: boolean;
+  onRequestClose?: () => void;
+}
+
 const TOOL_COVERAGE = [
   {
     title: "Playback and transport",
@@ -177,7 +182,10 @@ function resolveAuthNotice(snapshot: SpotifyConfigSnapshot): SpotifyAuthNotice {
   };
 }
 
-function McpMarketplaceWindow() {
+function McpMarketplaceWindow({
+  embedded = false,
+  onRequestClose,
+}: McpMarketplaceWindowProps) {
   const [config, setConfig] = useState<SpotifyMcpConfig>(() => readConfig());
   const [isRunning, setIsRunning] = useState(false);
   const [statusMessage, setStatusMessage] = useState("Spotify MCP is offline.");
@@ -373,6 +381,11 @@ function McpMarketplaceWindow() {
   }, [config.autoStart, handleStart, isRunning, isWorking]);
 
   const handleClose = async () => {
+    if (embedded) {
+      onRequestClose?.();
+      return;
+    }
+
     try {
       await getCurrentWindow().close();
     } catch (error) {
@@ -413,6 +426,7 @@ function McpMarketplaceWindow() {
               className="sarah-mcp-titlebar__window-btn"
               aria-label="Minimize MCP window"
               data-tauri-disable-drag-region="true"
+              style={{ display: embedded ? "none" : undefined }}
               onClick={() => void handleMinimize()}
             >
               <Minus className="size-3.5" />

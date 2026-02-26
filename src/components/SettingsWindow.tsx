@@ -25,6 +25,8 @@ import type { ThemeMode } from "@/hooks/useTheme";
 import type { DesktopWindowSource } from "@/types/screenSources";
 
 interface SettingsWindowProps {
+  embedded?: boolean;
+  onRequestClose?: () => void;
   onToggleTheme: () => void;
   theme: ThemeMode;
 }
@@ -59,7 +61,12 @@ function formatPermissionTimestamp(value: null | string) {
   return `Granted ${parsed.toLocaleString()}`;
 }
 
-function SettingsWindow({ onToggleTheme, theme }: SettingsWindowProps) {
+function SettingsWindow({
+  embedded = false,
+  onRequestClose,
+  onToggleTheme,
+  theme,
+}: SettingsWindowProps) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("general");
   const [startOnLaunch, setStartOnLaunch] = useState(true);
   const [alwaysOnTop, setAlwaysOnTop] = useState(true);
@@ -76,6 +83,11 @@ function SettingsWindow({ onToggleTheme, theme }: SettingsWindowProps) {
   const [defaultCaptureDirectory, setDefaultCaptureDirectory] = useState("");
   const [capturePathNotice, setCapturePathNotice] = useState<null | string>(null);
   const handleClose = async () => {
+    if (embedded) {
+      onRequestClose?.();
+      return;
+    }
+
     try {
       await getCurrentWindow().close();
     } catch (error) {
@@ -231,6 +243,7 @@ function SettingsWindow({ onToggleTheme, theme }: SettingsWindowProps) {
               className="sarah-settings-titlebar__window-btn"
               aria-label="Minimize settings"
               data-tauri-disable-drag-region="true"
+              style={{ display: embedded ? "none" : undefined }}
               onClick={() => void handleMinimize()}
             >
               <Minus className="size-3.5" />

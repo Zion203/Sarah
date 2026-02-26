@@ -14,6 +14,11 @@ import {
 } from "@/hooks/useQuickSwitchModels";
 import { OLLAMA_MODEL_STORAGE_KEY } from "@/hooks/useUIState";
 
+interface ModelsWindowProps {
+  embedded?: boolean;
+  onRequestClose?: () => void;
+}
+
 interface DetailedOllamaModel {
   digestShort: string;
   family: string;
@@ -127,7 +132,7 @@ function formatModifiedAt(value: null | string) {
   return parsed.toLocaleString();
 }
 
-function ModelsWindow() {
+function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
   const { quickSwitchModels, setQuickSwitchModels } = useQuickSwitchModels();
   const [installedModels, setInstalledModels] = useState<DetailedOllamaModel[]>([]);
   const [isLoadingInstalled, setIsLoadingInstalled] = useState(false);
@@ -175,6 +180,11 @@ function ModelsWindow() {
   }, [loadInstalledModels]);
 
   const handleClose = async () => {
+    if (embedded) {
+      onRequestClose?.();
+      return;
+    }
+
     await getCurrentWindow().close();
   };
 
@@ -248,6 +258,7 @@ function ModelsWindow() {
               type="button"
               className="sarah-models-titlebar__window-btn"
               aria-label="Minimize models window"
+              style={{ display: embedded ? "none" : undefined }}
               onClick={() => void handleMinimize()}
             >
               <Minus className="size-3.5" />
