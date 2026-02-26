@@ -5,42 +5,48 @@ import {
   BadgeCheck,
   CirclePause,
   FolderOpen,
-  Loader2,  
+  Loader2,
   Minus,
   Music2,
   Plug,
+  RotateCw,
   Server,
   ShieldCheck,
   Sparkles,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 
 const STORAGE_KEY = "sarah_spotify_mcp_config_v1";
-const DEFAULT_SERVER_ROOT =
+const LEGACY_SERVER_ROOT =
   "C:\\Users\\jesud\\OneDrive\\Desktop\\personal\\Sarah\\mcp\\spotify-mcp-server";
-const DRAG_BLOCK_SELECTOR = [
-  "button",
-  "input",
-  "textarea",
-  "select",
-  "option",
-  "a",
-  "label",
-  "[role='button']",
-  "[data-tauri-disable-drag-region='true']",
-  "[contenteditable='true']",
-].join(",");
-
+const DEFAULT_SERVER_ROOT = "F:\\Sarah\\mcp\\spotify-mcp-server";
 type SpotifyMcpConfig = {
   serverRoot: string;
   clientId: string;
   clientSecret: string;
   redirectUri: string;
   autoStart: boolean;
+};
+
+type SpotifyConfigSnapshot = {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+  hasAccessToken: boolean;
+  hasRefreshToken: boolean;
+  expiresAt: number | null;
+  hasConfigFile: boolean;
+};
+
+type SpotifyAuthNoticeTone = "idle" | "ok" | "warn";
+
+type SpotifyAuthNotice = {
+  tone: SpotifyAuthNoticeTone;
+  message: string;
 };
 
 const DEFAULT_CONFIG: SpotifyMcpConfig = {
@@ -50,6 +56,61 @@ const DEFAULT_CONFIG: SpotifyMcpConfig = {
   redirectUri: "http://127.0.0.1:8888/callback",
   autoStart: false,
 };
+
+const DEFAULT_AUTH_NOTICE: SpotifyAuthNotice = {
+  tone: "idle",
+  message: "OAuth not completed yet. Run OAuth after saving credentials.",
+};
+
+interface McpMarketplaceWindowProps {
+  embedded?: boolean;
+  onRequestClose?: () => void;
+}
+
+const TOOL_COVERAGE = [
+  {
+    title: "Playback and transport",
+    subtitle: "Direct playback actions and queue/volume control.",
+    tools: [
+      { name: "playMusic", detail: "Start track, album, artist, playlist, or URI." },
+      { name: "resumePlayback", detail: "Resume playback on the active device." },
+      { name: "pausePlayback", detail: "Pause current playback." },
+      { name: "skipToNext", detail: "Go to the next track." },
+      { name: "skipToPrevious", detail: "Go to the previous track." },
+      { name: "seekToPosition", detail: "Seek to absolute position (ms)." },
+      { name: "setVolume", detail: "Set playback volume (0-100)." },
+      { name: "adjustVolume", detail: "Increase or decrease current volume." },
+      { name: "addToQueue", detail: "Queue a track/album/artist/playlist." },
+    ],
+  },
+  {
+    title: "Discovery and context",
+    subtitle: "Find content and read current session state.",
+    tools: [
+      { name: "searchSpotify", detail: "Search tracks, artists, albums, playlists." },
+      { name: "getNowPlaying", detail: "Fetch current playback details." },
+      { name: "getQueue", detail: "Return current and upcoming queue items." },
+      { name: "getAvailableDevices", detail: "List available Spotify devices." },
+      { name: "getTrackAudioAnalysis", detail: "Get normalized waveform/segment analysis." },
+      { name: "getRecentlyPlayed", detail: "Return recently played tracks." },
+    ],
+  },
+  {
+    title: "Library and playlists",
+    subtitle: "Create and manage user library and playlist data.",
+    tools: [
+      { name: "getMyPlaylists", detail: "List your playlists." },
+      { name: "getPlaylistTracks", detail: "Fetch tracks for a playlist." },
+      { name: "createPlaylist", detail: "Create a new playlist." },
+      { name: "addTracksToPlaylist", detail: "Insert tracks into a playlist." },
+      { name: "getUsersSavedTracks", detail: "List saved tracks from your library." },
+      { name: "getAlbums", detail: "List albums from Spotify catalog." },
+      { name: "getAlbumTracks", detail: "Fetch tracks for an album." },
+      { name: "saveOrRemoveAlbumForUser", detail: "Save/remove albums in Your Music." },
+      { name: "checkUsersSavedAlbums", detail: "Check if albums are saved by the user." },
+    ],
+  },
+];
 
 function readConfig(): SpotifyMcpConfig {
   if (typeof window === "undefined") {
@@ -62,9 +123,16 @@ function readConfig(): SpotifyMcpConfig {
       return DEFAULT_CONFIG;
     }
     const parsed = JSON.parse(raw) as Partial<SpotifyMcpConfig>;
+    const normalizedServerRoot =
+      typeof parsed.serverRoot === "string" &&
+      parsed.serverRoot.trim() &&
+      parsed.serverRoot.trim() !== LEGACY_SERVER_ROOT
+        ? parsed.serverRoot.trim()
+        : DEFAULT_SERVER_ROOT;
     return {
       ...DEFAULT_CONFIG,
       ...parsed,
+      serverRoot: normalizedServerRoot,
     };
   } catch {
     return DEFAULT_CONFIG;
@@ -78,10 +146,50 @@ function writeConfig(config: SpotifyMcpConfig) {
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
-function McpMarketplaceWindow() {
+function resolveAuthNotice(snapshot: SpotifyConfigSnapshot): SpotifyAuthNotice {
+  if (!snapshot.hasConfigFile) {
+    return {
+      tone: "idle",
+      message: "spotify-config.json not found. Save config to create it.",
+    };
+  }
+
+  if (!snapshot.hasAccessToken || !snapshot.hasRefreshToken) {
+    return {
+      tone: "idle",
+      message: "OAuth tokens missing. Run OAuth to connect Spotify.",
+    };
+  }
+
+  if (typeof snapshot.expiresAt === "number") {
+    const expiresAtLabel = new Date(snapshot.expiresAt).toLocaleString();
+    if (snapshot.expiresAt <= Date.now()) {
+      return {
+        tone: "warn",
+        message: `Token expired on ${expiresAtLabel}. Run OAuth again.`,
+      };
+    }
+
+    return {
+      tone: "ok",
+      message: `Token is valid until ${expiresAtLabel}.`,
+    };
+  }
+
+  return {
+    tone: "ok",
+    message: "Token found. Expiry is unknown in spotify-config.json.",
+  };
+}
+
+function McpMarketplaceWindow({
+  embedded = false,
+  onRequestClose,
+}: McpMarketplaceWindowProps) {
   const [config, setConfig] = useState<SpotifyMcpConfig>(() => readConfig());
   const [isRunning, setIsRunning] = useState(false);
   const [statusMessage, setStatusMessage] = useState("Spotify MCP is offline.");
+  const [authNotice, setAuthNotice] = useState<SpotifyAuthNotice>(DEFAULT_AUTH_NOTICE);
   const [isWorking, setIsWorking] = useState(false);
   const [isAuthWorking, setIsAuthWorking] = useState(false);
   const [isBuildWorking, setIsBuildWorking] = useState(false);
@@ -92,6 +200,33 @@ function McpMarketplaceWindow() {
   useEffect(() => {
     writeConfig(config);
   }, [config]);
+
+  const hydrateConfigFromDisk = useCallback(async (serverRoot: string) => {
+    const normalizedServerRoot = serverRoot.trim() || DEFAULT_SERVER_ROOT;
+
+    try {
+      const snapshot = await invoke<SpotifyConfigSnapshot>("read_spotify_config", {
+        serverRoot: normalizedServerRoot,
+      });
+
+      setConfig((current) => ({
+        ...current,
+        serverRoot: normalizedServerRoot,
+        clientId: snapshot.hasConfigFile ? snapshot.clientId : current.clientId,
+        clientSecret: snapshot.hasConfigFile ? snapshot.clientSecret : current.clientSecret,
+        redirectUri: snapshot.hasConfigFile
+          ? snapshot.redirectUri || DEFAULT_CONFIG.redirectUri
+          : current.redirectUri,
+      }));
+      setAuthNotice(resolveAuthNotice(snapshot));
+    } catch (error) {
+      console.error("Failed to read Spotify config from disk.", error);
+      setAuthNotice({
+        tone: "warn",
+        message: "Could not read spotify-config.json. Verify the server path.",
+      });
+    }
+  }, []);
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -110,6 +245,16 @@ function McpMarketplaceWindow() {
   useEffect(() => {
     void refreshStatus();
   }, [refreshStatus]);
+
+  useEffect(() => {
+    void hydrateConfigFromDisk(config.serverRoot);
+    // Hydrate only once on open so user edits are not overwritten while typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrateConfigFromDisk]);
+
+  const handleRefresh = useCallback(async () => {
+    await Promise.all([refreshStatus(), hydrateConfigFromDisk(config.serverRoot)]);
+  }, [config.serverRoot, hydrateConfigFromDisk, refreshStatus]);
 
   const handleStart = useCallback(async () => {
     if (pendingRef.current) {
@@ -163,6 +308,7 @@ function McpMarketplaceWindow() {
     setIsAuthWorking(true);
     try {
       await invoke("run_spotify_oauth", { serverRoot: config.serverRoot });
+      await hydrateConfigFromDisk(config.serverRoot);
       setStatusMessage("OAuth completed. Tokens stored in spotify-config.json.");
     } catch (error) {
       console.error("Failed to run Spotify OAuth.", error);
@@ -172,7 +318,7 @@ function McpMarketplaceWindow() {
     } finally {
       setIsAuthWorking(false);
     }
-  }, [config.serverRoot, isAuthWorking]);
+  }, [config.serverRoot, hydrateConfigFromDisk, isAuthWorking]);
 
   const handleBuildServer = useCallback(async () => {
     if (isBuildWorking) {
@@ -206,6 +352,7 @@ function McpMarketplaceWindow() {
         clientSecret: config.clientSecret,
         redirectUri: config.redirectUri,
       });
+      await hydrateConfigFromDisk(config.serverRoot);
       setStatusMessage("spotify-config.json updated.");
     } catch (error) {
       console.error("Failed to save Spotify config.", error);
@@ -215,7 +362,14 @@ function McpMarketplaceWindow() {
     } finally {
       setIsSavingConfig(false);
     }
-  }, [config.clientId, config.clientSecret, config.redirectUri, config.serverRoot, isSavingConfig]);
+  }, [
+    config.clientId,
+    config.clientSecret,
+    config.redirectUri,
+    config.serverRoot,
+    hydrateConfigFromDisk,
+    isSavingConfig,
+  ]);
 
   useEffect(() => {
     if (!config.autoStart || isRunning || isWorking || autoStartAttemptedRef.current) {
@@ -227,6 +381,11 @@ function McpMarketplaceWindow() {
   }, [config.autoStart, handleStart, isRunning, isWorking]);
 
   const handleClose = async () => {
+    if (embedded) {
+      onRequestClose?.();
+      return;
+    }
+
     try {
       await getCurrentWindow().close();
     } catch (error) {
@@ -243,30 +402,14 @@ function McpMarketplaceWindow() {
   };
 
   const statusTone = useMemo(() => (isRunning ? "live" : "idle"), [isRunning]);
-
-  const handleWindowMouseDownCapture = async (event: MouseEvent<HTMLElement>) => {
-    if (event.button !== 0 || event.detail > 1) {
-      return;
-    }
-
-    const target = event.target as HTMLElement;
-    if (target.closest(DRAG_BLOCK_SELECTOR)) {
-      return;
-    }
-
-    try {
-      await getCurrentWindow().startDragging();
-    } catch (error) {
-      console.error("Failed to start dragging MCP window.", error);
-    }
-  };
+  const toolCount = useMemo(
+    () => TOOL_COVERAGE.reduce((total, section) => total + section.tools.length, 0),
+    [],
+  );
+  const isRefreshDisabled = isWorking || isAuthWorking || isBuildWorking || isSavingConfig;
 
   return (
-    <main
-      className="sarah-mcp-window"
-      aria-label="Sarah AI MCP marketplace"
-      onMouseDownCapture={handleWindowMouseDownCapture}
-    >
+    <main className="sarah-mcp-window" aria-label="Sarah AI MCP marketplace">
       <section className="sarah-mcp-shell">
         <header
           className="sarah-mcp-titlebar"
@@ -283,6 +426,7 @@ function McpMarketplaceWindow() {
               className="sarah-mcp-titlebar__window-btn"
               aria-label="Minimize MCP window"
               data-tauri-disable-drag-region="true"
+              style={{ display: embedded ? "none" : undefined }}
               onClick={() => void handleMinimize()}
             >
               <Minus className="size-3.5" />
@@ -323,6 +467,7 @@ function McpMarketplaceWindow() {
               <div className="sarah-mcp-hero__title-row">
                 <h1 className="sarah-mcp-hero__title">Spotify Control Suite</h1>
                 <span className={`sarah-mcp-status sarah-mcp-status--${statusTone}`}>
+                  <span className="sarah-mcp-status__dot" aria-hidden="true" />
                   {isRunning ? "Running" : "Offline"}
                 </span>
               </div>
@@ -368,7 +513,7 @@ function McpMarketplaceWindow() {
                     variant="outline"
                     className="sarah-mcp-outline"
                     onClick={() => void handleBuildServer()}
-                    disabled={isBuildWorking}
+                    disabled={isBuildWorking || isRunning || isWorking}
                   >
                     {isBuildWorking ? <Loader2 className="size-4 animate-spin" /> : null}
                     Build server
@@ -378,7 +523,7 @@ function McpMarketplaceWindow() {
                     variant="outline"
                     className="sarah-mcp-outline"
                     onClick={() => void handleRunOAuth()}
-                    disabled={isAuthWorking}
+                    disabled={isAuthWorking || isRunning || isWorking}
                   >
                     {isAuthWorking ? <Loader2 className="size-4 animate-spin" /> : null}
                     Run OAuth
@@ -386,11 +531,13 @@ function McpMarketplaceWindow() {
                   <Button
                     type="button"
                     variant="ghost"
-                    className="sarah-mcp-ghost"
-                    onClick={() => void refreshStatus()}
-                    disabled={isWorking || isAuthWorking || isBuildWorking || isSavingConfig}
+                    className="sarah-mcp-ghost sarah-mcp-ghost--icon"
+                    onClick={() => void handleRefresh()}
+                    disabled={isRefreshDisabled}
+                    aria-label="Refresh MCP status and config"
+                    title="Refresh MCP status and config"
                   >
-                    Refresh
+                    <RotateCw className={`size-4 ${isRefreshDisabled ? "animate-spin" : ""}`} />
                   </Button>
                 </div>
               </article>
@@ -428,6 +575,9 @@ function McpMarketplaceWindow() {
                     <p className="sarah-mcp-card__title">Spotify API credentials</p>
                     <p className="sarah-mcp-card__subtitle">
                       These values should match the `spotify-config.json` in the server folder.
+                    </p>
+                    <p className="sarah-mcp-card__hint" data-tone={authNotice.tone}>
+                      {authNotice.message}
                     </p>
                   </div>
                   <div className="sarah-mcp-card__badge">
@@ -519,34 +669,34 @@ function McpMarketplaceWindow() {
                   <div>
                     <p className="sarah-mcp-card__title">Tool coverage</p>
                     <p className="sarah-mcp-card__subtitle">
-                      Once connected, Sarah can control these Spotify tasks.
+                      {toolCount} endpoints available across playback, discovery, and library.
                     </p>
                   </div>
                   <div className="sarah-mcp-card__badge">
                     <Plug className="size-4" />
                   </div>
                 </header>
-                <div className="sarah-mcp-card__body sarah-mcp-tool-grid">
-                  <div className="sarah-mcp-tool">
-                    <p className="sarah-mcp-tool__title">Playback control</p>
-                    <p className="sarah-mcp-tool__subtitle">
-                      Play, pause, skip, volume, and queue.
-                    </p>
-                  </div>
-                  <div className="sarah-mcp-tool">
-                    <p className="sarah-mcp-tool__title">Search and discovery</p>
-                    <p className="sarah-mcp-tool__subtitle">
-                      Find tracks, albums, artists, and playlists.
-                    </p>
-                  </div>
-                  <div className="sarah-mcp-tool">
-                    <p className="sarah-mcp-tool__title">Library management</p>
-                    <p className="sarah-mcp-tool__subtitle">
-                      Create playlists and add tracks in seconds.
-                    </p>
-                  </div>
+                <div className="sarah-mcp-card__body sarah-mcp-tool-grid sarah-mcp-tool-grid--detailed">
+                  {TOOL_COVERAGE.map((section) => (
+                    <div key={section.title} className="sarah-mcp-tool">
+                      <div className="sarah-mcp-tool__heading">
+                        <p className="sarah-mcp-tool__title">{section.title}</p>
+                        <span className="sarah-mcp-tool__count">{section.tools.length} tools</span>
+                      </div>
+                      <p className="sarah-mcp-tool__subtitle">{section.subtitle}</p>
+                      <ul className="sarah-mcp-tool__list">
+                        {section.tools.map((tool) => (
+                          <li key={tool.name} className="sarah-mcp-tool__item">
+                            <span className="sarah-mcp-tool__name">{tool.name}</span>
+                            <span className="sarah-mcp-tool__detail">{tool.detail}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
                 </div>
               </article>
+
             </section>
           </section>
         </div>

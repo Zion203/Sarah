@@ -118,12 +118,53 @@ impl Default for SpotifyMcpState {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SpotifyConfigSnapshot {
+    client_id: String,
+    client_secret: String,
+    redirect_uri: String,
+    access_token: Option<String>,
+    has_access_token: bool,
+    has_refresh_token: bool,
+    expires_at: Option<u64>,
+    has_config_file: bool,
+}
+
+fn parse_expires_at(value: Option<&serde_json::Value>) -> Option<u64> {
+    let raw = value?;
+    if let Some(number) = raw.as_u64() {
+        return Some(number);
+    }
+    if let Some(number) = raw.as_i64() {
+        if number >= 0 {
+            return Some(number as u64);
+        }
+        return None;
+    }
+    if let Some(text) = raw.as_str() {
+        return text.trim().parse::<u64>().ok();
+    }
+    None
+}
+
 const AUDIO_WINDOW_WIDTH: f64 = 380.0;
 const AUDIO_WINDOW_HEIGHT: f64 = 140.0;
 
 #[derive(serde::Serialize, Clone)]
 struct AudioCommandPayload {
     action: String,
+}
+
+fn close_aux_window_group(app: &AppHandle, keep: &str) {
+    for window_label in ["settings", "models", "history", "mcp"] {
+        if window_label == keep {
+            continue;
+        }
+        if let Some(window) = app.get_webview_window(window_label) {
+            let _ = window.close();
+        }
+    }
 }
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -142,7 +183,7 @@ async fn generate_ollama_response(prompt: String, model: Option<String>) -> Resu
     let model = model
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "qwen3:4b".to_string());
+        .unwrap_or_else(|| "qwen2.5-coder:7b".to_string());
 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(180))
@@ -295,6 +336,8 @@ async fn pull_ollama_model(model: String) -> Result<String, String> {
 
 #[tauri::command]
 async fn open_settings_window(app: AppHandle) -> Result<(), String> {
+    close_aux_window_group(&app, "settings");
+
     if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.hide();
     }
@@ -332,6 +375,8 @@ async fn open_settings_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn open_models_window(app: AppHandle) -> Result<(), String> {
+    close_aux_window_group(&app, "models");
+
     if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.hide();
     }
@@ -369,6 +414,8 @@ async fn open_models_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn open_history_window(app: AppHandle) -> Result<(), String> {
+    close_aux_window_group(&app, "history");
+
     if let Some(window) = app.get_webview_window("history") {
         let _ = window.center();
         let _ = window.show();
@@ -396,6 +443,12 @@ async fn open_history_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn open_mcp_window(app: AppHandle) -> Result<(), String> {
+    close_aux_window_group(&app, "mcp");
+
+    if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.hide();
+    }
+
     if let Some(window) = app.get_webview_window("mcp") {
         let _ = window.center();
         let _ = window.show();
@@ -504,16 +557,20 @@ fn run_spotify_tool(
         return Err("Spotify MCP server root not found.".to_string());
     }
 
+    let tool = tool.trim().to_string();
+    if tool.is_empty() {
+        return Err("Missing Spotify MCP tool name.".to_string());
+    }
+
     let runner = root.join("tool-runner.js");
     if !runner.exists() {
         return Err("tool-runner.js not found. Rebuild the MCP server.".to_string());
     }
 
-    let args_payload = args.to_string();
     let output = Command::new("node")
         .arg(runner)
-        .arg(tool)
-        .arg(args_payload)
+        .arg(&tool)
+        .arg(args.to_string())
         .current_dir(root)
         .output()
         .map_err(|error| format!("Failed to run Spotify MCP tool: {error}"))?;
@@ -641,6 +698,79 @@ fn write_spotify_config(
         .map_err(|error| format!("Failed to write config: {error}"))?;
 
     Ok(())
+}
+
+#[tauri::command]
+fn read_spotify_config(server_root: String) -> Result<SpotifyConfigSnapshot, String> {
+    let server_root = server_root.trim().to_string();
+    if server_root.is_empty() {
+        return Err("Missing Spotify MCP server root.".to_string());
+    }
+
+    let config_path = Path::new(&server_root).join("spotify-config.json");
+    if !config_path.exists() {
+        return Ok(SpotifyConfigSnapshot {
+            client_id: String::new(),
+            client_secret: String::new(),
+            redirect_uri: String::new(),
+            access_token: None,
+            has_access_token: false,
+            has_refresh_token: false,
+            expires_at: None,
+            has_config_file: false,
+        });
+    }
+
+    let raw = std::fs::read_to_string(&config_path)
+        .map_err(|error| format!("Failed to read Spotify config: {error}"))?;
+    let parsed: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|error| format!("Invalid spotify-config.json: {error}"))?;
+
+    let client_id = parsed
+        .get("clientId")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let client_secret = parsed
+        .get("clientSecret")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let redirect_uri = parsed
+        .get("redirectUri")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let has_access_token = parsed
+        .get("accessToken")
+        .and_then(|value| value.as_str())
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    let access_token = parsed
+        .get("accessToken")
+        .and_then(|value| value.as_str())
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let has_refresh_token = parsed
+        .get("refreshToken")
+        .and_then(|value| value.as_str())
+        .map(|value| !value.trim().is_empty())
+        .unwrap_or(false);
+    let expires_at = parse_expires_at(parsed.get("expiresAt"));
+
+    Ok(SpotifyConfigSnapshot {
+        client_id,
+        client_secret,
+        redirect_uri,
+        access_token,
+        has_access_token,
+        has_refresh_token,
+        expires_at,
+        has_config_file: true,
+    })
 }
 
 #[tauri::command]
@@ -804,6 +934,7 @@ pub fn run() {
             stop_spotify_mcp,
             spotify_mcp_status,
             write_spotify_config,
+            read_spotify_config,
             build_spotify_mcp,
             run_spotify_oauth
         ])

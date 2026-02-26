@@ -7,7 +7,6 @@ export interface ScreenRecordingResult {
   endedAtMs: number;
   id: string;
   mimeType: string;
-  screenshotPath: null | string;
   startedAtMs: number;
   videoPath: string;
 }
@@ -21,7 +20,6 @@ interface NativeStopRecordingPayload {
   durationMs: number;
   endedAtMs: number;
   mimeType: string;
-  screenshotPath: null | string;
   startedAtMs: number;
   videoPath: string;
 }
@@ -140,7 +138,6 @@ export function useScreenRecording() {
           endedAtMs: payload.endedAtMs,
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           mimeType: payload.mimeType,
-          screenshotPath: payload.screenshotPath,
           startedAtMs: payload.startedAtMs,
           videoPath: payload.videoPath,
         });

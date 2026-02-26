@@ -85,7 +85,7 @@ function AssistantInput({
   };
 
   return (
-    <form className="sarah-input-shell" data-tauri-drag-region onSubmit={handleSubmit}>
+    <form className="sarah-input-shell" onSubmit={handleSubmit}>
       <div className="sarah-input-orb-wrap" data-tauri-disable-drag-region="true">
         <button
           type="button"

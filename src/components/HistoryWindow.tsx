@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { clearChatHistory, readChatHistory, type ChatHistoryItem } from "@/hooks/useUIState";
 
-function HistoryWindow() {
+interface HistoryWindowProps {
+  embedded?: boolean;
+  onRequestClose?: () => void;
+}
+
+function HistoryWindow({ embedded = false, onRequestClose }: HistoryWindowProps) {
   const [history, setHistory] = useState<ChatHistoryItem[]>([]);
 
   useEffect(() => {
@@ -16,6 +21,11 @@ function HistoryWindow() {
   }, []);
 
   const handleClose = () => {
+    if (embedded) {
+      onRequestClose?.();
+      return;
+    }
+
     void getCurrentWindow().close();
   };
 

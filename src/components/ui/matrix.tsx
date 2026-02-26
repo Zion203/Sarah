@@ -42,11 +42,6 @@ function averageLevel(levels: number[] | undefined): number {
   return clamp(total / levels.length)
 }
 
-function hashNoise(x: number, y: number, t: number): number {
-  const seed = x * 12.9898 + y * 78.233 + t * 37.719
-  return clamp((Math.sin(seed) * 43758.5453) % 1)
-}
-
 function audioReactiveFrame(
   rows: number,
   cols: number,
@@ -426,8 +421,7 @@ export const pulse: Frame[] = (() => {
   return frames
 })()
 
-export function vu(columns: number, levels: number[]): Frame {
-  const rows = 7
+export function vu(rows: number, columns: number, levels: number[]): Frame {
   const frame = emptyFrame(rows, columns)
 
   for (let col = 0; col < Math.min(columns, levels.length); col++) {
@@ -617,7 +611,7 @@ export const Matrix = React.forwardRef<HTMLDivElement, MatrixProps>(
 
     const currentFrame = useMemo(() => {
       if (mode === "vu" && levels && levels.length > 0) {
-        return ensureFrameSize(vu(cols, levels), rows, cols)
+        return ensureFrameSize(vu(rows, cols, levels), rows, cols)
       }
 
       if (mode === "audio") {

@@ -24,10 +24,12 @@ export interface ChatHistoryItem {
 const STATE_FLOW: UIVisualState[] = ["idle", "listening", "thinking", "speaking"];
 const HISTORY_LIMIT = 120;
 const DEFAULT_OLLAMA_MODEL = "llama3.1:8b";
-const AUDIO_DECISION_MODEL = "qwen3:4b";
+const AUDIO_DECISION_MODEL = "qwen2.5-coder:7b";
 const MCP_STORAGE_KEY = "sarah_spotify_mcp_config_v1";
-const MCP_DEFAULT_ROOT =
+const SPOTIFY_WEB_DEVICE_STORAGE_KEY = "sarah_spotify_web_sdk_device_id_v1";
+const MCP_LEGACY_ROOT =
   "C:\\Users\\jesud\\OneDrive\\Desktop\\personal\\Sarah\\mcp\\spotify-mcp-server";
+const MCP_DEFAULT_ROOT = "F:\\Sarah\\mcp\\spotify-mcp-server";
 
 function readStoredModel() {
   if (typeof window === "undefined") {
@@ -67,6 +69,8 @@ type AudioDecision =
   | { action: "volume_set"; value: number }
   | { action: "volume_adjust"; adjustment: number }
   | { action: "none" };
+
+type AudioPlayType = "track" | "album" | "artist" | "playlist";
 
 function parseAudioIntent(input: string): AudioIntent | null {
   const text = input.trim();
@@ -164,6 +168,11 @@ type SpotifyToolResponse = {
   content?: Array<{ type?: string; text?: string; isError?: boolean }>;
 };
 
+type SpotifyToolResult = {
+  isError: boolean;
+  text: string;
+};
+
 function parseSearchResult(text: string) {
   const idMatch = text.match(/ID:\s*([A-Za-z0-9]+)/);
   const titleMatch = text.match(/1\.\s+"(.+?)"\s+by\s+(.+?)\s+\(/);
@@ -182,6 +191,61 @@ function safeParseJson<T>(raw: string): T | null {
   }
 }
 
+function parseSpotifyToolResult(raw: string): SpotifyToolResult {
+  const parsed = safeParseJson<SpotifyToolResponse>(raw);
+  const blocks = Array.isArray(parsed?.content) ? parsed.content : [];
+  const text = blocks
+    .map((block) => (typeof block.text === "string" ? block.text.trim() : ""))
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+
+  const inferredError =
+    /^error\b/i.test(text) ||
+    /\b(failed|unauthorized|forbidden|not found)\b/i.test(text);
+
+  return {
+    isError: blocks.some((block) => block.isError === true) || inferredError,
+    text: text || raw.trim(),
+  };
+}
+
+function clearPreferredSpotifyDeviceId() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.localStorage.removeItem(SPOTIFY_WEB_DEVICE_STORAGE_KEY);
+}
+
+async function invokeSpotifyToolWithDeviceRecovery(
+  serverRoot: string,
+  tool: string,
+  args: Record<string, unknown>,
+) {
+  const invokeTool = async (nextArgs: Record<string, unknown>) =>
+    invoke<string>("run_spotify_tool", { serverRoot, tool, args: nextArgs });
+
+  let raw = await invokeTool(args);
+  let parsed = parseSpotifyToolResult(raw);
+  const deviceId = typeof args.deviceId === "string" ? args.deviceId.trim() : "";
+  const shouldRetryWithoutDevice =
+    Boolean(deviceId) && parsed.isError && /\bdevice not found\b/i.test(parsed.text);
+
+  if (shouldRetryWithoutDevice) {
+    clearPreferredSpotifyDeviceId();
+    const retryArgs: Record<string, unknown> = { ...args };
+    delete retryArgs.deviceId;
+    raw = await invokeTool(retryArgs);
+    parsed = parseSpotifyToolResult(raw);
+  }
+
+  if (parsed.isError) {
+    throw new Error(parsed.text || "Spotify MCP command failed.");
+  }
+
+  return raw;
+}
+
 function extractJsonBlock(raw: string) {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
@@ -193,6 +257,51 @@ function looksLikeAudioCommand(text: string) {
   return /\b(spotify|song|track|audio|music|player|playlist|album|artist|play|pause|stop|next|previous|skip|queue|volume)\b/i.test(
     text,
   );
+}
+
+function resolvePlaySearchType(prompt: string, modelType?: AudioPlayType): AudioPlayType {
+  const normalizedPrompt = prompt.toLowerCase();
+  if (/\bplaylist\b/.test(normalizedPrompt)) {
+    return "playlist";
+  }
+  if (/\balbum\b/.test(normalizedPrompt)) {
+    return "album";
+  }
+  if (/\bartist\b/.test(normalizedPrompt)) {
+    return "artist";
+  }
+  // Default to track/song-name lookup unless user explicitly requests another type.
+  return modelType === "track" ? "track" : "track";
+}
+
+function normalizeMcpServerRoot(value: unknown) {
+  if (typeof value !== "string") {
+    return MCP_DEFAULT_ROOT;
+  }
+
+  const normalized = value.trim();
+  if (!normalized || normalized === MCP_LEGACY_ROOT) {
+    return MCP_DEFAULT_ROOT;
+  }
+
+  return normalized;
+}
+
+function withPreferredSpotifyDevice<T extends Record<string, unknown>>(args: T): T & { deviceId?: string } {
+  if (typeof window === "undefined") {
+    return args;
+  }
+
+  const raw = window.localStorage.getItem(SPOTIFY_WEB_DEVICE_STORAGE_KEY);
+  const deviceId = raw?.trim();
+  if (!deviceId) {
+    return args;
+  }
+
+  return {
+    ...args,
+    deviceId,
+  };
 }
 
 async function requestAudioDecision(prompt: string): Promise<AudioDecision | null> {
@@ -301,7 +410,12 @@ function amplitudeTargetByState(state: UIVisualState) {
   }
 }
 
-export function useUIState() {
+interface UseUIStateOptions {
+  animate?: boolean;
+}
+
+export function useUIState(options: UseUIStateOptions = {}) {
+  const { animate = true } = options;
   const [state, setState] = useState<UIVisualState>("idle");
   const [prompt, setPrompt] = useState("");
   const [amplitude, setAmplitude] = useState(0.09);
@@ -320,13 +434,17 @@ export function useUIState() {
   }, []);
 
   useEffect(() => {
+    if (!animate) {
+      return;
+    }
+
     const timer = window.setInterval(() => {
       const target = amplitudeTargetByState(state);
       setAmplitude((current) => current + (target - current) * 0.4);
     }, 70);
 
     return () => window.clearInterval(timer);
-  }, [state]);
+  }, [animate, state]);
 
   useEffect(() => clearPending, [clearPending]);
 
@@ -384,8 +502,8 @@ export function useUIState() {
         {
           id: conversationId,
           prompt: value,
-          status: "completed",
-          response: "Working on your Spotify request...",
+          status: "thinking",
+          response: "Connecting Spotify MCP...",
         },
       ]);
 
@@ -426,19 +544,35 @@ export function useUIState() {
           }
 
           const stored = window.localStorage.getItem(MCP_STORAGE_KEY);
-          const serverRoot = stored
-            ? (JSON.parse(stored)?.serverRoot as string) || MCP_DEFAULT_ROOT
-            : MCP_DEFAULT_ROOT;
+          const parsedServerRoot = stored
+            ? (() => {
+                try {
+                  const parsed = JSON.parse(stored) as { serverRoot?: unknown };
+                  return parsed.serverRoot;
+                } catch {
+                  return undefined;
+                }
+              })()
+            : undefined;
+          const serverRoot = normalizeMcpServerRoot(parsedServerRoot);
 
           await ensureSpotifyMcpRunning(serverRoot);
 
           if (decision.action === "play") {
             if (!decision.query) {
-              await invoke("run_spotify_tool", {
+              setConversations([
+                {
+                  id: conversationId,
+                  prompt: value,
+                  status: "thinking",
+                  response: "Resuming playback...",
+                },
+              ]);
+              await invokeSpotifyToolWithDeviceRecovery(
                 serverRoot,
-                tool: "resumePlayback",
-                args: {},
-              });
+                "resumePlayback",
+                withPreferredSpotifyDevice({}),
+              );
               setConversations([
                 {
                   id: conversationId,
@@ -450,7 +584,15 @@ export function useUIState() {
               return;
             }
 
-            const searchType = decision.type ?? "track";
+            const searchType = resolvePlaySearchType(value, decision.type);
+            setConversations([
+              {
+                id: conversationId,
+                prompt: value,
+                status: "thinking",
+                response: "Searching Spotify...",
+              },
+            ]);
             const searchRaw = await invoke<string>("run_spotify_tool", {
               serverRoot,
               tool: "searchSpotify",
@@ -484,11 +626,11 @@ export function useUIState() {
               return;
             }
 
-            await invoke("run_spotify_tool", {
+            await invokeSpotifyToolWithDeviceRecovery(
               serverRoot,
-              tool: "playMusic",
-              args: { type: searchType, id },
-            });
+              "playMusic",
+              withPreferredSpotifyDevice({ type: searchType, id }),
+            );
 
             setConversations([
               {
@@ -496,8 +638,8 @@ export function useUIState() {
                 prompt: value,
                 status: "completed",
                 response: title
-                  ? `Playing \"${title}\"${artist ? ` by ${artist}` : ""}.`
-                  : "Playing the selected track.",
+                  ? `Playing ${title}${artist ? `, ${artist}` : ""}`
+                  : "Playing",
               },
             ]);
             return;
@@ -534,11 +676,11 @@ export function useUIState() {
               ]);
               return;
             }
-            await invoke("run_spotify_tool", {
+            await invokeSpotifyToolWithDeviceRecovery(
               serverRoot,
-              tool: "addToQueue",
-              args: { type: "track", id },
-            });
+              "addToQueue",
+              withPreferredSpotifyDevice({ type: "track", id }),
+            );
             setConversations([
               {
                 id: conversationId,
@@ -553,11 +695,11 @@ export function useUIState() {
           }
 
           if (decision.action === "volume_set") {
-            await invoke("run_spotify_tool", {
+            await invokeSpotifyToolWithDeviceRecovery(
               serverRoot,
-              tool: "setVolume",
-              args: { volumePercent: decision.value },
-            });
+              "setVolume",
+              withPreferredSpotifyDevice({ volumePercent: decision.value }),
+            );
             setConversations([
               {
                 id: conversationId,
@@ -570,11 +712,11 @@ export function useUIState() {
           }
 
           if (decision.action === "volume_adjust") {
-            await invoke("run_spotify_tool", {
+            await invokeSpotifyToolWithDeviceRecovery(
               serverRoot,
-              tool: "adjustVolume",
-              args: { adjustment: decision.adjustment },
-            });
+              "adjustVolume",
+              withPreferredSpotifyDevice({ adjustment: decision.adjustment }),
+            );
             setConversations([
               {
                 id: conversationId,
@@ -596,11 +738,11 @@ export function useUIState() {
           };
           const tool = toolMap[decision.action];
           if (tool) {
-            await invoke("run_spotify_tool", {
+            await invokeSpotifyToolWithDeviceRecovery(
               serverRoot,
               tool,
-              args: {},
-            });
+              withPreferredSpotifyDevice({}),
+            );
           }
 
           const responseMap: Record<string, string> = {
@@ -650,7 +792,6 @@ export function useUIState() {
     clearPending();
     const requestId = activeRequestIdRef.current;
 
-    console.log(`[Sarah AI] ${value}`);
     setPrompt(value);
     setIsPromptLocked(true);
     setAmplitude(0.6);

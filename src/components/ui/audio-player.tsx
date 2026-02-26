@@ -14,7 +14,7 @@ import {
   useState,
 } from "react"
 import * as SliderPrimitive from "@radix-ui/react-slider"
-import { Check, PauseIcon, PlayIcon, Settings } from "lucide-react"
+import { Check, Gauge, PauseIcon, PlayIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -415,6 +415,8 @@ export interface AudioPlayerSpeedProps
   extends React.ComponentProps<typeof Button> {
   speeds?: readonly number[]
   menuClassName?: string
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 export function AudioPlayerSpeed({
@@ -423,13 +425,15 @@ export function AudioPlayerSpeed({
   variant = "ghost",
   size = "icon",
   menuClassName,
+  open,
+  onOpenChange,
   ...props
 }: AudioPlayerSpeedProps) {
   const player = useAudioPlayer()
   const currentSpeed = player.playbackRate
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           variant={variant}
@@ -438,7 +442,7 @@ export function AudioPlayerSpeed({
           aria-label="Playback speed"
           {...props}
         >
-          <Settings className="size-4" />
+          <Gauge className="size-4" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -449,9 +453,14 @@ export function AudioPlayerSpeed({
           <DropdownMenuItem
             key={speed}
             onClick={() => player.setPlaybackRate(speed)}
-            className="flex items-center justify-between"
+            className="sarah-audio-menu__item sarah-audio-menu__item--settings flex items-center justify-between"
           >
-            <span className={speed === 1 ? "" : "font-mono"}>
+            <span
+              className={cn(
+                "sarah-audio-menu__speed-label",
+                speed === 1 ? "" : "font-mono"
+              )}
+            >
               {speed === 1 ? "Normal" : `${speed}x`}
             </span>
             {currentSpeed === speed && <Check className="size-4" />}
