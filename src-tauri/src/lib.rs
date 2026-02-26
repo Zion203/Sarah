@@ -84,11 +84,8 @@ fn format_size_bytes(size_bytes: u64) -> String {
     format!("{size_bytes} B")
 }
 
-async fn fetch_ollama_tags() -> Result<OllamaTagsResponse, String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
-        .map_err(|error| format!("Failed to initialize HTTP client: {error}"))?;
+async fn fetch_ollama_tags(app: &AppHandle) -> Result<OllamaTagsResponse, String> {
+    let client = app.state::<reqwest::Client>();
 
     let response = client
         .get("http://127.0.0.1:11434/api/tags")
@@ -174,7 +171,11 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command]
-async fn generate_ollama_response(prompt: String, model: Option<String>) -> Result<String, String> {
+async fn generate_ollama_response(
+    prompt: String,
+    model: Option<String>,
+    app: AppHandle,
+) -> Result<String, String> {
     let prompt = prompt.trim().to_string();
     if prompt.is_empty() {
         return Err("Prompt is empty.".to_string());
@@ -185,10 +186,7 @@ async fn generate_ollama_response(prompt: String, model: Option<String>) -> Resu
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "qwen2.5-coder:7b".to_string());
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(180))
-        .build()
-        .map_err(|error| format!("Failed to initialize HTTP client: {error}"))?;
+    let client = app.state::<reqwest::Client>();
 
     let response = client
         .post("http://127.0.0.1:11434/api/generate")
@@ -223,8 +221,8 @@ async fn generate_ollama_response(prompt: String, model: Option<String>) -> Resu
 }
 
 #[tauri::command]
-async fn list_ollama_models() -> Result<Vec<String>, String> {
-    let payload = fetch_ollama_tags().await?;
+async fn list_ollama_models(app: AppHandle) -> Result<Vec<String>, String> {
+    let payload = fetch_ollama_tags(&app).await?;
 
     let mut models: Vec<String> = payload
         .models
@@ -240,8 +238,8 @@ async fn list_ollama_models() -> Result<Vec<String>, String> {
 }
 
 #[tauri::command]
-async fn list_ollama_models_detailed() -> Result<Vec<OllamaModelSummary>, String> {
-    let payload = fetch_ollama_tags().await?;
+async fn list_ollama_models_detailed(app: AppHandle) -> Result<Vec<OllamaModelSummary>, String> {
+    let payload = fetch_ollama_tags(&app).await?;
     let mut rows: Vec<OllamaModelSummary> = payload
         .models
         .into_iter()
@@ -284,16 +282,13 @@ async fn list_ollama_models_detailed() -> Result<Vec<OllamaModelSummary>, String
 }
 
 #[tauri::command]
-async fn pull_ollama_model(model: String) -> Result<String, String> {
+async fn pull_ollama_model(model: String, app: AppHandle) -> Result<String, String> {
     let normalized = model.trim().to_string();
     if normalized.is_empty() {
         return Err("Model name is empty.".to_string());
     }
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(360))
-        .build()
-        .map_err(|error| format!("Failed to initialize HTTP client: {error}"))?;
+    let client = app.state::<reqwest::Client>();
 
     let response = client
         .post("http://127.0.0.1:11434/api/pull")
@@ -851,8 +846,14 @@ fn toggle_main_window<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(360))
+        .build()
+        .expect("Failed to create reqwest client");
+
     tauri::Builder::default()
         .manage(SpotifyMcpState::default())
+        .manage(client)
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.center();

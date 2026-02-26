@@ -14,6 +14,17 @@ export default defineConfig(async () => ({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          three: ["three", "@react-three/fiber", "@react-three/drei"],
+          framer: ["framer-motion"],
+          vendor: ["react", "react-dom", "lucide-react"],
+        },
+      },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
