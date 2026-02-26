@@ -170,6 +170,17 @@ function audioReactiveFrame(
 }
 
 function ensureFrameSize(frame: Frame, rows: number, cols: number): Frame {
+  let isCorrectSize = frame.length === rows
+  if (isCorrectSize) {
+    for (let r = 0; r < rows; r++) {
+      if (!frame[r] || frame[r].length !== cols) {
+        isCorrectSize = false
+        break
+      }
+    }
+  }
+  if (isCorrectSize) return frame
+
   const result: Frame = []
   for (let r = 0; r < rows; r++) {
     const row = frame[r] || []
@@ -611,15 +622,11 @@ export const Matrix = React.forwardRef<HTMLDivElement, MatrixProps>(
 
     const currentFrame = useMemo(() => {
       if (mode === "vu" && levels && levels.length > 0) {
-        return ensureFrameSize(vu(rows, cols, levels), rows, cols)
+        return vu(rows, cols, levels)
       }
 
       if (mode === "audio") {
-        return ensureFrameSize(
-          audioReactiveFrame(rows, cols, levels, phase, patternIndex),
-          rows,
-          cols
-        )
+        return audioReactiveFrame(rows, cols, levels, phase, patternIndex)
       }
 
       if (pattern) {
@@ -630,7 +637,7 @@ export const Matrix = React.forwardRef<HTMLDivElement, MatrixProps>(
         return ensureFrameSize(frames[frameIndex] || frames[0], rows, cols)
       }
 
-      return ensureFrameSize([], rows, cols)
+      return emptyFrame(rows, cols)
     }, [pattern, frames, frameIndex, rows, cols, mode, levels])
 
     const cellPositions = useMemo(() => {
@@ -711,27 +718,13 @@ export const Matrix = React.forwardRef<HTMLDivElement, MatrixProps>(
               />
             </radialGradient>
 
-            <filter
-              id="matrix-glow"
-              x="-50%"
-              y="-50%"
-              width="200%"
-              height="200%"
-            >
-              <feGaussianBlur stdDeviation="2" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
           </defs>
 
           <style>
             {`
-              .matrix-pixel {
-                transition: opacity 300ms ease-out, transform 150ms ease-out;
-                transform-origin: center;
-                transform-box: fill-box;
-              }
-              .matrix-pixel-active {
-                filter: url(#matrix-glow);
+              .matrix-pixel-transition {
+                transition: opacity 300ms ease-out, r 150ms ease-out;
+                will-change: opacity, r;
               }
             `}
           </style>
@@ -748,25 +741,21 @@ export const Matrix = React.forwardRef<HTMLDivElement, MatrixProps>(
                 ? "url(#matrix-pixel-on)"
                 : "url(#matrix-pixel-off)"
 
-              const scale = isActive ? 1.1 : 1
-              const radius = (size / 2) * 0.9
+              const baseRadius = (size / 2) * 0.9
+              const currentRadius = isActive ? baseRadius * 1.1 : baseRadius
 
               return (
                 <circle
                   key={`${rowIndex}-${colIndex}`}
                   className={cn(
-                    "matrix-pixel",
-                    isActive && "matrix-pixel-active",
+                    mode !== "audio" && "matrix-pixel-transition",
                     !isOn && "opacity-20 dark:opacity-[0.1]"
                   )}
                   cx={pos.x + size / 2}
                   cy={pos.y + size / 2}
-                  r={radius}
+                  r={currentRadius}
                   fill={fill}
                   opacity={isOn ? opacity : 0.1}
-                  style={{
-                    transform: `scale(${scale})`,
-                  }}
                 />
               )
             })
