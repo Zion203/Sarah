@@ -156,6 +156,17 @@ struct AudioCommandPayload {
     action: String,
 }
 
+fn close_aux_window_group(app: &AppHandle, keep: &str) {
+    for window_label in ["settings", "models", "history", "mcp"] {
+        if window_label == keep {
+            continue;
+        }
+        if let Some(window) = app.get_webview_window(window_label) {
+            let _ = window.close();
+        }
+    }
+}
+
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
 fn greet(name: &str) -> String {
@@ -325,6 +336,8 @@ async fn pull_ollama_model(model: String) -> Result<String, String> {
 
 #[tauri::command]
 async fn open_settings_window(app: AppHandle) -> Result<(), String> {
+    close_aux_window_group(&app, "settings");
+
     if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.hide();
     }
@@ -362,6 +375,8 @@ async fn open_settings_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn open_models_window(app: AppHandle) -> Result<(), String> {
+    close_aux_window_group(&app, "models");
+
     if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.hide();
     }
@@ -399,6 +414,8 @@ async fn open_models_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn open_history_window(app: AppHandle) -> Result<(), String> {
+    close_aux_window_group(&app, "history");
+
     if let Some(window) = app.get_webview_window("history") {
         let _ = window.center();
         let _ = window.show();
@@ -426,6 +443,8 @@ async fn open_history_window(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn open_mcp_window(app: AppHandle) -> Result<(), String> {
+    close_aux_window_group(&app, "mcp");
+
     if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.hide();
     }

@@ -37,6 +37,7 @@ interface SpotifyAudioPlayerProps {
   onPlayingChange?: (isPlaying: boolean) => void
   draggable?: boolean
   autoplayOnOpen?: boolean
+  windowTitlebarDrag?: boolean
 }
 
 interface SpotifyPlaybackState {
@@ -310,6 +311,7 @@ function SpotifyAudioPlayer({
   onPlayingChange,
   draggable = true,
   autoplayOnOpen = false,
+  windowTitlebarDrag = false,
 }: SpotifyAudioPlayerProps) {
   const dragControls = useDragControls()
   const dockRef = useRef<HTMLElement | null>(null)
@@ -834,6 +836,7 @@ function SpotifyAudioPlayer({
   }, [runTransportAction])
 
   const isDraggable = draggable
+  const useFramerDrag = isDraggable && !windowTitlebarDrag
   const progressPercent =
     playback.durationSec > 0
       ? Math.min(100, Math.max(0, (playback.progressSec / playback.durationSec) * 100))
@@ -849,19 +852,24 @@ function SpotifyAudioPlayer({
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.985 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
-          drag={isDraggable}
-          dragControls={isDraggable ? dragControls : undefined}
+          drag={useFramerDrag}
+          dragControls={useFramerDrag ? dragControls : undefined}
           dragListener={false}
           dragMomentum={false}
           dragElastic={0.12}
           aria-label="Sarah Audio player"
-          data-tauri-disable-drag-region="true"
+          data-tauri-disable-drag-region={windowTitlebarDrag ? undefined : "true"}
           ref={dockRef}
         >
           <div
-            className={cn("sarah-audio-dock__header", isDraggable && "sarah-audio-dock__drag")}
+            className={cn(
+              "sarah-audio-dock__header",
+              "sarah-audio-titlebar",
+              useFramerDrag && "sarah-audio-dock__drag",
+            )}
+            data-tauri-drag-region={windowTitlebarDrag ? "" : undefined}
             onPointerDown={(event) => {
-              if (isDraggable) {
+              if (useFramerDrag) {
                 dragControls.start(event)
               }
             }}
@@ -872,7 +880,7 @@ function SpotifyAudioPlayer({
               </span>
               Sarah Audio
             </div>
-            <div className="sarah-audio-dock__actions">
+            <div className="sarah-audio-dock__actions" data-tauri-disable-drag-region="true">
               <Button
                 variant="ghost"
                 size="icon-sm"

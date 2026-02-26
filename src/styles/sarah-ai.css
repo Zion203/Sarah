@@ -967,6 +967,20 @@ body {
   cursor: grabbing;
 }
 
+.sarah-audio-titlebar {
+  min-height: 1.8rem;
+  padding-bottom: 0.28rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 80%, transparent);
+}
+
+.sarah-audio-titlebar[data-tauri-drag-region] {
+  cursor: grab;
+}
+
+.sarah-audio-titlebar[data-tauri-drag-region]:active {
+  cursor: grabbing;
+}
+
 .sarah-audio-dock__header {
   display: flex;
   align-items: center;

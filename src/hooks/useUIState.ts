@@ -410,7 +410,12 @@ function amplitudeTargetByState(state: UIVisualState) {
   }
 }
 
-export function useUIState() {
+interface UseUIStateOptions {
+  animate?: boolean;
+}
+
+export function useUIState(options: UseUIStateOptions = {}) {
+  const { animate = true } = options;
   const [state, setState] = useState<UIVisualState>("idle");
   const [prompt, setPrompt] = useState("");
   const [amplitude, setAmplitude] = useState(0.09);
@@ -429,13 +434,17 @@ export function useUIState() {
   }, []);
 
   useEffect(() => {
+    if (!animate) {
+      return;
+    }
+
     const timer = window.setInterval(() => {
       const target = amplitudeTargetByState(state);
       setAmplitude((current) => current + (target - current) * 0.4);
     }, 70);
 
     return () => window.clearInterval(timer);
-  }, [state]);
+  }, [animate, state]);
 
   useEffect(() => clearPending, [clearPending]);
 
