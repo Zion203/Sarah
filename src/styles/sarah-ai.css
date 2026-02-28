@@ -1,12 +1,18 @@
 @import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Sora:wght@400;500;600;700&display=swap");
 
+html[data-window-type="main"],
+body[data-window-type="main"],
+#root[data-window-type="main"] {
+  background: transparent !important;
+}
+
 html,
 body,
 #root {
   width: 100%;
   height: 100%;
   margin: 0;
-  background: transparent !important;
+  background: var(--background);
   font-family: "Sora", "Segoe UI", "Helvetica Neue", sans-serif;
 }
 
@@ -16,8 +22,7 @@ body {
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklab, var(--foreground) 35%, transparent)
-    color-mix(in oklab, var(--background) 88%, var(--card));
+  scrollbar-color: color-mix(in oklab, var(--foreground) 35%, transparent) color-mix(in oklab, var(--background) 88%, var(--card));
 }
 
 *::-webkit-scrollbar {
@@ -72,16 +77,12 @@ body {
 
 .sarah-overlay-root--screen-recording {
   background:
-    radial-gradient(
-      120% 120% at 50% 0%,
+    radial-gradient(120% 120% at 50% 0%,
       color-mix(in oklab, var(--sarah-orb-base-2) 20%, transparent) 0%,
-      transparent 64%
-    ),
-    radial-gradient(
-      120% 120% at 100% 100%,
+      transparent 64%),
+    radial-gradient(120% 120% at 100% 100%,
       color-mix(in oklab, var(--sarah-orb-base-1) 16%, transparent) 0%,
-      transparent 68%
-    );
+      transparent 68%);
 }
 
 .sarah-screen-scan-overlay {
@@ -90,18 +91,14 @@ body {
   pointer-events: none;
   z-index: 1;
   background:
-    radial-gradient(
-      120% 120% at 50% 0%,
+    radial-gradient(120% 120% at 50% 0%,
       color-mix(in oklab, var(--foreground) 10%, transparent) 0%,
-      transparent 58%
-    ),
-    repeating-linear-gradient(
-      to bottom,
+      transparent 58%),
+    repeating-linear-gradient(to bottom,
       color-mix(in oklab, var(--foreground) 3%, transparent) 0px,
       color-mix(in oklab, var(--foreground) 3%, transparent) 1px,
       transparent 1px,
-      transparent 7px
-    );
+      transparent 7px);
 }
 
 .sarah-screen-scan-overlay::before,
@@ -112,32 +109,26 @@ body {
 }
 
 .sarah-screen-scan-overlay::before {
-  background: linear-gradient(
-    180deg,
-    transparent 0%,
-    color-mix(in oklab, var(--foreground) 0%, transparent) 38%,
-    color-mix(in oklab, var(--foreground) 24%, transparent) 50%,
-    color-mix(in oklab, var(--foreground) 0%, transparent) 62%,
-    transparent 100%
-  );
+  background: linear-gradient(180deg,
+      transparent 0%,
+      color-mix(in oklab, var(--foreground) 0%, transparent) 38%,
+      color-mix(in oklab, var(--foreground) 24%, transparent) 50%,
+      color-mix(in oklab, var(--foreground) 0%, transparent) 62%,
+      transparent 100%);
   mix-blend-mode: screen;
   animation: sarah-screen-scan-sweep 2.1s linear infinite;
 }
 
 .sarah-screen-scan-overlay::after {
   background:
-    linear-gradient(
-      130deg,
+    linear-gradient(130deg,
       transparent 0%,
       color-mix(in oklab, var(--sarah-orb-base-2) 22%, transparent) 48%,
-      transparent 78%
-    ),
-    linear-gradient(
-      40deg,
+      transparent 78%),
+    linear-gradient(40deg,
       transparent 0%,
       color-mix(in oklab, var(--sarah-orb-base-1) 12%, transparent) 60%,
-      transparent 92%
-    );
+      transparent 92%);
   animation: sarah-screen-scan-drift 2.6s ease-in-out infinite;
 }
 
@@ -162,11 +153,9 @@ body {
   border-radius: 0.84rem;
   border: 1px solid color-mix(in oklab, var(--foreground) 18%, var(--border));
   background:
-    linear-gradient(
-      150deg,
+    linear-gradient(150deg,
       color-mix(in oklab, var(--card) 92%, var(--background)) 0%,
-      color-mix(in oklab, var(--card) 78%, var(--background)) 100%
-    );
+      color-mix(in oklab, var(--card) 78%, var(--background)) 100%);
   box-shadow:
     0 8px 24px color-mix(in oklab, var(--foreground) 16%, transparent),
     inset 0 1px 0 color-mix(in oklab, var(--foreground) 14%, transparent);
@@ -935,7 +924,7 @@ body {
   font-size: 0.64rem;
 }
 
-.sarah-audio-menu__item > svg {
+.sarah-audio-menu__item>svg {
   width: 0.78rem;
   height: 0.78rem;
 }
@@ -1298,27 +1287,32 @@ body {
   from {
     transform: translateY(-62%);
   }
+
   to {
     transform: translateY(62%);
   }
 }
 
 @keyframes sarah-screen-scan-drift {
+
   0%,
   100% {
     transform: translate3d(-3%, -1%, 0);
   }
+
   50% {
     transform: translate3d(3%, 1%, 0);
   }
 }
 
 @keyframes sarah-recording-dot-pulse {
+
   0%,
   100% {
     transform: scale(1);
     box-shadow: 0 0 0 0 color-mix(in oklab, var(--destructive) 46%, transparent);
   }
+
   55% {
     transform: scale(0.88);
     box-shadow: 0 0 0 8px color-mix(in oklab, var(--destructive) 0%, transparent);
@@ -1708,11 +1702,9 @@ body {
 .sarah-model-picker-item[data-active="true"] {
   border-color: color-mix(in oklab, var(--foreground) 32%, var(--border));
   background:
-    linear-gradient(
-      150deg,
+    linear-gradient(150deg,
       color-mix(in oklab, var(--card) 96%, var(--background)) 0%,
-      color-mix(in oklab, var(--foreground) 6%, var(--background)) 100%
-    );
+      color-mix(in oklab, var(--foreground) 6%, var(--background)) 100%);
 }
 
 .sarah-model-picker-item:focus-visible {
@@ -2165,8 +2157,7 @@ body {
   overflow-x: hidden;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 54%, transparent)
-    transparent;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 54%, transparent) transparent;
 }
 
 .sarah-settings-content__details::-webkit-scrollbar {
@@ -2228,22 +2219,18 @@ body {
   overflow-x: hidden;
   overscroll-behavior: contain;
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 52%, transparent)
-    transparent;
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 52%, transparent) transparent;
 }
 
-.sarah-settings-content__details--permissions
-  .sarah-settings-group--permissions::-webkit-scrollbar {
+.sarah-settings-content__details--permissions .sarah-settings-group--permissions::-webkit-scrollbar {
   width: 8px;
 }
 
-.sarah-settings-content__details--permissions
-  .sarah-settings-group--permissions::-webkit-scrollbar-track {
+.sarah-settings-content__details--permissions .sarah-settings-group--permissions::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.sarah-settings-content__details--permissions
-  .sarah-settings-group--permissions::-webkit-scrollbar-thumb {
+.sarah-settings-content__details--permissions .sarah-settings-group--permissions::-webkit-scrollbar-thumb {
   background: color-mix(in oklab, var(--muted-foreground) 52%, transparent);
   border-radius: 9999px;
 }

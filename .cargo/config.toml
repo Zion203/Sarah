@@ -1,0 +1,6 @@
+[build]
+jobs = 8
+
+[env]
+# Keep llama-cpp CMake builds deterministic in constrained/dev sandboxes.
+CMAKE_BUILD_PARALLEL_LEVEL = "8"

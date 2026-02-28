@@ -1,0 +1,10 @@
+[workspace]
+members = ["src-tauri"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "AGPL-3.0"
+
+[workspace.metadata]
+project = "ai-desktop"

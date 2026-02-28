@@ -1,0 +1,6 @@
+# Ignore generated Rust build targets created during tauri dev checks.
+target-agent-check/
+target-local/
+
+# Ignore local embedding/reranker cache writes.
+.fastembed_cache/

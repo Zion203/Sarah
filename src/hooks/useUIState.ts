@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { join } from "@tauri-apps/api/path";
+import { listen } from "@tauri-apps/api/event";
+import { useSession } from "./useSession";
 
 export type UIVisualState = "idle" | "listening" | "thinking" | "speaking";
 export type ConversationStatus = "thinking" | "completed";
@@ -49,12 +51,12 @@ const AUDIO_COMMAND_PATTERNS: Array<{
   intent: "play" | "pause" | "stop" | "next" | "prev";
   match: RegExp;
 }> = [
-  { intent: "play", match: /\b(play|resume|start|unpause)\b/i },
-  { intent: "pause", match: /\b(pause|hold|freeze)\b/i },
-  { intent: "stop", match: /\b(stop|silence|mute)\b/i },
-  { intent: "next", match: /\b(next|skip|forward)\b/i },
-  { intent: "prev", match: /\b(previous|prev|back|rewind)\b/i },
-];
+    { intent: "play", match: /\b(play|resume|start|unpause)\b/i },
+    { intent: "pause", match: /\b(pause|hold|freeze)\b/i },
+    { intent: "stop", match: /\b(stop|silence|mute)\b/i },
+    { intent: "next", match: /\b(next|skip|forward)\b/i },
+    { intent: "prev", match: /\b(previous|prev|back|rewind)\b/i },
+  ];
 
 type AudioIntent =
   | { action: "play"; explicit: boolean; query?: string; type?: "track" | "album" | "artist" | "playlist" }
@@ -424,6 +426,7 @@ export function useUIState(options: UseUIStateOptions = {}) {
   const [isPromptLocked, setIsPromptLocked] = useState(false);
   const completionTimerRef = useRef<number | null>(null);
   const activeRequestIdRef = useRef(0);
+  const { currentSessionId, createNewSession } = useSession();
 
   const clearPending = useCallback(() => {
     if (completionTimerRef.current !== null) {
@@ -462,13 +465,14 @@ export function useUIState(options: UseUIStateOptions = {}) {
     setPrompt("");
   }, [clearPending]);
 
-  const clearConversation = useCallback(() => {
+  const clearConversation = useCallback(async () => {
     clearPending();
     setIsPromptLocked(false);
     setPrompt("");
     setState("idle");
     setConversations([]);
-  }, [clearPending]);
+    await createNewSession();
+  }, [clearPending, createNewSession]);
 
   const setSelectedModel = useCallback((model: string) => {
     const normalized = model.trim();
@@ -546,13 +550,13 @@ export function useUIState(options: UseUIStateOptions = {}) {
           const stored = window.localStorage.getItem(MCP_STORAGE_KEY);
           const parsedServerRoot = stored
             ? (() => {
-                try {
-                  const parsed = JSON.parse(stored) as { serverRoot?: unknown };
-                  return parsed.serverRoot;
-                } catch {
-                  return undefined;
-                }
-              })()
+              try {
+                const parsed = JSON.parse(stored) as { serverRoot?: unknown };
+                return parsed.serverRoot;
+              } catch {
+                return undefined;
+              }
+            })()
             : undefined;
           const serverRoot = normalizeMcpServerRoot(parsedServerRoot);
 
@@ -800,50 +804,71 @@ export function useUIState(options: UseUIStateOptions = {}) {
 
     void (async () => {
       try {
-        const response = await invoke<string>("generate_ollama_response", {
-          prompt: value,
-          model: selectedModel,
-        });
-
-        if (activeRequestIdRef.current !== requestId) {
-          return;
+        if (!currentSessionId) {
+          throw new Error("No active session initialized.");
         }
 
-        const safeResponse = response.trim() || "No response from model.";
-        setAmplitude(0.74);
-        setState("speaking");
+        const unlistenToken = await listen<{
+          sessionId: string;
+          token: string;
+          done: boolean;
+        }>("ai:token", (event) => {
+          if (event.payload.sessionId !== currentSessionId) return;
+          if (activeRequestIdRef.current !== requestId) return;
 
-        setConversations((current) =>
-          current.map((item) =>
-            item.id === conversationId
-              ? {
+          setConversations((current) =>
+            current.map((item) =>
+              item.id === conversationId
+                ? {
+                  ...item,
+                  response: item.response + event.payload.token,
+                }
+                : item,
+            ),
+          );
+        });
+
+        const unlistenDone = await listen<{ sessionId: string }>("ai:done", (event) => {
+          if (event.payload.sessionId !== currentSessionId) return;
+          if (activeRequestIdRef.current !== requestId) return;
+
+          setAmplitude(0.74);
+          setState("speaking");
+
+          setConversations((current) =>
+            current.map((item) =>
+              item.id === conversationId
+                ? {
                   ...item,
                   status: "completed",
-                  response: safeResponse,
                 }
-              : item,
-          ),
-        );
+                : item,
+            ),
+          );
 
-        const existing = readChatHistory();
-        writeChatHistory([
-          ...existing,
-          {
-            id: conversationId,
-            prompt: value,
-            response: safeResponse,
-            timestamp: new Date().toISOString(),
+          completionTimerRef.current = window.setTimeout(() => {
+            if (activeRequestIdRef.current !== requestId) {
+              return;
+            }
+            setIsPromptLocked(false);
+            setState("idle");
+            completionTimerRef.current = null;
+          }, 320);
+
+          unlistenToken();
+          unlistenDone();
+        });
+
+        const user = await invoke<{ id: string }>("get_default_user");
+        await invoke("send_message", {
+          request: {
+            userId: user.id,
+            sessionId: currentSessionId,
+            content: value,
+            attachments: [],
           },
-        ]);
+        });
 
-        completionTimerRef.current = window.setTimeout(() => {
-          if (activeRequestIdRef.current !== requestId) {
-            return;
-          }
-          setIsPromptLocked(false);
-          setState("idle");
-          completionTimerRef.current = null;
-        }, 320);
       } catch (error) {
         if (activeRequestIdRef.current !== requestId) {
           return;
@@ -853,22 +878,22 @@ export function useUIState(options: UseUIStateOptions = {}) {
           error instanceof Error
             ? error.message
             : typeof error === "object" &&
-                error !== null &&
-                "message" in error &&
-                typeof (error as { message: unknown }).message === "string"
+              error !== null &&
+              "message" in error &&
+              typeof (error as { message: unknown }).message === "string"
               ? (error as { message: string }).message
-            : typeof error === "string"
-              ? error
-              : "Failed to get response from Ollama.";
+              : typeof error === "string"
+                ? error
+                : "Failed to get response from Ollama.";
 
         setConversations((current) =>
           current.map((item) =>
             item.id === conversationId
               ? {
-                  ...item,
-                  status: "completed",
-                  response: message,
-                }
+                ...item,
+                status: "completed",
+                response: message,
+              }
               : item,
           ),
         );

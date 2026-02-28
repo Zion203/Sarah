@@ -1,0 +1,11 @@
+pub mod analytics_commands;
+pub mod chat_commands;
+pub mod integration_commands;
+pub mod local_commands;
+pub mod mcp_commands;
+pub mod memory_commands;
+pub mod model_commands;
+pub mod rag_commands;
+pub mod runtime_commands;
+pub mod settings_commands;
+pub mod system_commands;

@@ -74,27 +74,6 @@ interface NativeScreenshotResult {
   screenshotPath: string;
 }
 
-function normalizeOllamaModelNames(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const unique = new Set<string>();
-  for (const item of value) {
-    if (typeof item !== "string") {
-      continue;
-    }
-
-    const normalized = item.trim();
-    if (!normalized) {
-      continue;
-    }
-    unique.add(normalized);
-  }
-
-  return Array.from(unique);
-}
-
 function buildQuickSwitchOptions(
   availableModels: string[],
   quickSwitchModels: string[],
@@ -311,9 +290,9 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
         },
         screenPermissionGrantedAt: granted
           ? {
-              ...current.screenPermissionGrantedAt,
-              [surface]: new Date().toISOString(),
-            }
+            ...current.screenPermissionGrantedAt,
+            [surface]: new Date().toISOString(),
+          }
           : current.screenPermissionGrantedAt,
       }));
     },
@@ -483,9 +462,9 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
           error instanceof Error
             ? error.message
             : typeof error === "object" &&
-                error !== null &&
-                "message" in error &&
-                typeof (error as { message: unknown }).message === "string"
+              error !== null &&
+              "message" in error &&
+              typeof (error as { message: unknown }).message === "string"
               ? (error as { message: string }).message
               : "Failed to load active windows.";
         setWindowSourceSelectionError(message);
@@ -682,9 +661,11 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
 
     setIsModelPickerLoading(true);
 
-    void invoke<unknown>("list_ollama_models")
+    void invoke<{ id: string; name: string; displayName: string; isDownloaded: number }[]>("get_installed_models")
       .then((result) => {
-        const models = normalizeOllamaModelNames(result);
+        const models = Array.isArray(result)
+          ? result.filter((m) => m.isDownloaded === 1).map((m) => m.name).filter(Boolean)
+          : [];
         const quickSwitch = buildQuickSwitchOptions(models, quickSwitchModels, selectedModel);
         setModelPickerItems(quickSwitch);
         if (quickSwitch.length > 0) {
@@ -701,11 +682,11 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
           error instanceof Error
             ? error.message
             : typeof error === "object" &&
-                error !== null &&
-                "message" in error &&
-                typeof (error as { message: unknown }).message === "string"
+              error !== null &&
+              "message" in error &&
+              typeof (error as { message: unknown }).message === "string"
               ? (error as { message: string }).message
-              : "Failed to load local models from Ollama.";
+              : "Failed to load local models.";
         setModelPickerError(message);
         const fallback = buildQuickSwitchOptions([], quickSwitchModels, selectedModel);
         setModelPickerItems(fallback);

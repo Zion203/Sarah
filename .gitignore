@@ -11,6 +11,11 @@ node_modules
 dist
 dist-ssr
 *.local
+target/
+target-local/
+target-agent-check/
+.fastembed_cache/
+***/.fingerprint/
 
 # Editor directories and files
 .vscode/*
