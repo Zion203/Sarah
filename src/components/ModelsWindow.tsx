@@ -4,7 +4,10 @@ import { Download, Minus, Pin, RefreshCw, X, AlertCircle, CheckCircle2 } from "l
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { MAX_QUICK_SWITCH_MODELS, useQuickSwitchModels } from "@/hooks/useQuickSwitchModels";
-import { OLLAMA_MODEL_STORAGE_KEY } from "@/hooks/useUIState";
+import {
+  MODEL_SELECTION_MODE_STORAGE_KEY,
+  OLLAMA_MODEL_STORAGE_KEY,
+} from "@/hooks/useUIState";
 
 interface ModelsWindowProps {
   embedded?: boolean;
@@ -167,8 +170,9 @@ export default function ModelsWindow({ embedded = false, onRequestClose }: Model
     try {
       await invoke("set_default_model", { modelId });
       window.localStorage.setItem(OLLAMA_MODEL_STORAGE_KEY, normalized);
+      window.localStorage.setItem(MODEL_SELECTION_MODE_STORAGE_KEY, "manual");
       setSelectedModel(normalized);
-      setStatusMessage(`Active model switched to ${normalized}.`);
+      setStatusMessage(`Active model switched to ${normalized} (manual mode).`);
       loadData();
     } catch (e) {
       setStatusMessage(toErrorMessage(e, "Failed to set default model."));

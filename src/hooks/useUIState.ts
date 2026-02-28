@@ -6,8 +6,10 @@ import { useSession } from "./useSession";
 
 export type UIVisualState = "idle" | "listening" | "thinking" | "speaking";
 export type ConversationStatus = "thinking" | "completed";
+export type ModelSelectionMode = "auto" | "manual";
 export const CHAT_HISTORY_STORAGE_KEY = "sarah_chat_history_v1";
 export const OLLAMA_MODEL_STORAGE_KEY = "sarah_ollama_model_v1";
+export const MODEL_SELECTION_MODE_STORAGE_KEY = "sarah_model_selection_mode_v1";
 
 export interface ConversationItem {
   id: string;
@@ -45,6 +47,15 @@ function readStoredModel() {
   }
 
   return normalized;
+}
+
+function readStoredModelSelectionMode(): ModelSelectionMode {
+  if (typeof window === "undefined") {
+    return "auto";
+  }
+
+  const value = window.localStorage.getItem(MODEL_SELECTION_MODE_STORAGE_KEY);
+  return value === "manual" ? "manual" : "auto";
 }
 
 const AUDIO_COMMAND_PATTERNS: Array<{
@@ -423,6 +434,8 @@ export function useUIState(options: UseUIStateOptions = {}) {
   const [amplitude, setAmplitude] = useState(0.09);
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [selectedModel, setSelectedModelState] = useState(readStoredModel);
+  const [modelSelectionMode, setModelSelectionModeState] =
+    useState<ModelSelectionMode>(readStoredModelSelectionMode);
   const [isPromptLocked, setIsPromptLocked] = useState(false);
   const completionTimerRef = useRef<number | null>(null);
   const activeRequestIdRef = useRef(0);
@@ -450,6 +463,19 @@ export function useUIState(options: UseUIStateOptions = {}) {
   }, [animate, state]);
 
   useEffect(() => clearPending, [clearPending]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === OLLAMA_MODEL_STORAGE_KEY) {
+        setSelectedModelState(readStoredModel());
+      } else if (event.key === MODEL_SELECTION_MODE_STORAGE_KEY) {
+        setModelSelectionModeState(readStoredModelSelectionMode());
+      }
+    };
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   const cycleState = useCallback(() => {
     setState((current) => {
@@ -483,6 +509,13 @@ export function useUIState(options: UseUIStateOptions = {}) {
     setSelectedModelState(normalized);
     if (typeof window !== "undefined") {
       window.localStorage.setItem(OLLAMA_MODEL_STORAGE_KEY, normalized);
+    }
+  }, []);
+
+  const setModelSelectionMode = useCallback((mode: ModelSelectionMode) => {
+    setModelSelectionModeState(mode);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(MODEL_SELECTION_MODE_STORAGE_KEY, mode);
     }
   }, []);
 
@@ -866,6 +899,8 @@ export function useUIState(options: UseUIStateOptions = {}) {
             sessionId: currentSessionId,
             content: value,
             attachments: [],
+            modelSelectionMode,
+            selectedModel: modelSelectionMode === "manual" ? selectedModel : null,
           },
         });
 
@@ -901,7 +936,7 @@ export function useUIState(options: UseUIStateOptions = {}) {
         setState("idle");
       }
     })();
-  }, [clearPending, isPromptLocked, prompt, selectedModel]);
+  }, [clearPending, isPromptLocked, modelSelectionMode, prompt, selectedModel]);
 
   const stopResponse = useCallback(() => {
     clearPending();
@@ -959,7 +994,9 @@ export function useUIState(options: UseUIStateOptions = {}) {
     cycleState,
     isPromptLocked,
     prompt,
+    modelSelectionMode,
     selectedModel,
+    setModelSelectionMode,
     setPrompt,
     setSelectedModel,
     setSystemConversation,

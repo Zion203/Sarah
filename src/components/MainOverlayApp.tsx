@@ -197,8 +197,10 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
     conversations,
     cycleState,
     isPromptLocked,
+    modelSelectionMode,
     prompt,
     selectedModel,
+    setModelSelectionMode,
     setPrompt,
     setSelectedModel,
     setSystemConversation,
@@ -719,6 +721,7 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
       }
 
       setSelectedModel(model);
+      setModelSelectionMode("manual");
       setQuickSwitchModels((current) => {
         const without = current.filter((item) => item !== normalized);
         return [normalized, ...without].slice(0, MAX_QUICK_SWITCH_MODELS);
@@ -726,8 +729,14 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
       setIsModelPickerVisible(false);
       setSystemConversation("/model", `Using ${normalized} for upcoming responses.`);
     },
-    [setQuickSwitchModels, setSelectedModel, setSystemConversation],
+    [setModelSelectionMode, setQuickSwitchModels, setSelectedModel, setSystemConversation],
   );
+
+  const handleAutoModelSelect = useCallback(() => {
+    setModelSelectionMode("auto");
+    setIsModelPickerVisible(false);
+    setSystemConversation("/model", "Using automatic model routing for upcoming responses.");
+  }, [setModelSelectionMode, setSystemConversation]);
 
   useEffect(() => {
     if (!screenRecordingResult) {
@@ -1059,11 +1068,13 @@ function MainOverlayApp({ isDarkTheme, onToggleTheme }: MainOverlayAppProps) {
                       isScreenAccessDisabled={!preferences.allowScreenRecording}
                       isModelPickerVisible={isModelPickerVisible}
                       isWindowSourceSelection={isWindowSourceSelectionVisible}
+                      modelSelectionMode={modelSelectionMode}
                       modelPickerEmptyText={modelPickerEmptyText}
                       modelPickerTitle={modelPickerTitle}
                       modelOptions={modelPickerItems}
                       modelOptionsError={modelPickerError}
                       modelOptionsLoading={isModelPickerLoading}
+                      onAutoModelSelect={handleAutoModelSelect}
                       onModelSelect={handleModelSelect}
                       onSlashCommandSelect={handleSlashCommandSelect}
                       onWindowSourceSelect={handleWindowSourceSelect}

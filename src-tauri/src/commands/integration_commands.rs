@@ -48,10 +48,6 @@ fn open_or_focus_window(
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
-        #[cfg(debug_assertions)]
-        {
-            window.open_devtools();
-        }
         return Ok(());
     }
 
@@ -71,10 +67,6 @@ fn open_or_focus_window(
     window
         .set_focus()
         .map_err(|error| format!("Failed to focus {label} window: {error}"))?;
-    #[cfg(debug_assertions)]
-    {
-        window.open_devtools();
-    }
 
     Ok(())
 }
