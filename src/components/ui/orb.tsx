@@ -3,6 +3,16 @@ import { useTexture } from "@react-three/drei"
 import { Canvas, useFrame, useThree } from "@react-three/fiber"
 import * as THREE from "three"
 
+declare global {
+  namespace JSX {
+    interface IntrinsicElements {
+      mesh: any;
+      circleGeometry: any;
+      shaderMaterial: any;
+    }
+  }
+}
+
 export type AgentState = null | "thinking" | "listening" | "talking"
 
 type OrbProps = {
@@ -159,7 +169,7 @@ function Scene({
     return () => observer.disconnect()
   }, [])
 
-  useFrame((_, delta: number) => {
+  useFrame((_: any, delta: number) => {
     const mat = circleRef.current?.material
     if (!mat) return
     const live = colorsRef?.current

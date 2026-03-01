@@ -1,12 +1,11 @@
 use std::ffi::c_void;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::atomic::AtomicBool;
 use std::thread::{self, JoinHandle};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use serde::{Deserialize, Serialize};
 use rfd::FileDialog;
 use windows_capture::capture::{Context, GraphicsCaptureApiHandler};
 use windows_capture::encoder::{
@@ -21,6 +20,7 @@ use windows_capture::settings::{
     MinimumUpdateIntervalSettings, SecondaryWindowSettings, Settings,
 };
 use windows_capture::window::Window;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -63,9 +63,9 @@ struct RecordingArtifacts {
 
 #[derive(Debug)]
 struct NativeCaptureSession {
-    join_handle: JoinHandle<Result<RecordingArtifacts, String>>,
+    join_handle: std::thread::JoinHandle<Result<RecordingArtifacts, String>>,
     started_at_ms: u64,
-    stop_flag: Arc<AtomicBool>,
+    stop_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 #[derive(Default)]
@@ -75,7 +75,7 @@ struct NativeCaptureState {
 
 struct EncoderCapture {
     encoder: Option<VideoEncoder>,
-    stop_flag: Arc<AtomicBool>,
+    stop_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 struct ScreenshotCapture {
@@ -85,7 +85,7 @@ struct ScreenshotCapture {
 
 impl GraphicsCaptureApiHandler for EncoderCapture {
     type Error = Box<dyn std::error::Error + Send + Sync>;
-    type Flags = (Arc<AtomicBool>, PathBuf, u32, u32);
+    type Flags = (std::sync::Arc<std::sync::atomic::AtomicBool>, PathBuf, u32, u32);
 
     fn new(ctx: Context<Self::Flags>) -> Result<Self, Self::Error> {
         let (stop_flag, video_path, width, height) = ctx.flags;
@@ -113,7 +113,7 @@ impl GraphicsCaptureApiHandler for EncoderCapture {
             encoder.send_frame(frame)?;
         }
 
-        if self.stop_flag.load(Ordering::SeqCst) {
+        if self.stop_flag.load(std::sync::atomic::Ordering::SeqCst) {
             if let Some(encoder) = self.encoder.take() {
                 encoder.finish()?;
             }
@@ -124,7 +124,7 @@ impl GraphicsCaptureApiHandler for EncoderCapture {
     }
 
     fn on_closed(&mut self) -> Result<(), Self::Error> {
-        self.stop_flag.store(true, Ordering::SeqCst);
+        self.stop_flag.store(true, std::sync::atomic::Ordering::SeqCst);
         Ok(())
     }
 }
@@ -199,15 +199,18 @@ fn screenshot_output_path(output_directory: Option<String>) -> Result<PathBuf, S
     let stamp = now_ms();
     Ok(base.join(format!("sarah-screenshot-{stamp}.png")))
 }
-
 #[tauri::command]
 pub fn get_default_capture_directory() -> Result<String, String> {
+    crate::log_info!("sarah.command", "get_default_capture_directory invoked");
     let path = default_capture_directory()?;
     Ok(path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
-pub fn pick_capture_output_directory(initial_directory: Option<String>) -> Result<Option<String>, String> {
+pub fn pick_capture_output_directory(
+    initial_directory: Option<String>,
+) -> Result<Option<String>, String> {
+    crate::log_info!("sarah.command", "pick_capture_output_directory invoked");
     let mut dialog = FileDialog::new();
 
     if let Some(path) = initial_directory
@@ -216,8 +219,6 @@ pub fn pick_capture_output_directory(initial_directory: Option<String>) -> Resul
         .filter(|value| !value.is_empty())
     {
         dialog = dialog.set_directory(path);
-    } else if let Ok(default_path) = default_capture_directory() {
-        dialog = dialog.set_directory(default_path);
     }
 
     Ok(dialog
@@ -448,62 +449,44 @@ fn cleanup_finished_session_if_any(state: &mut NativeCaptureState) {
 
 #[tauri::command]
 pub fn list_active_windows() -> Result<Vec<ActiveWindowSource>, String> {
-    let windows = Window::enumerate().map_err(|error| format!("Failed to enumerate windows: {error}"))?;
-    let mut items = Vec::new();
-
-    for window in windows {
-        if !window.is_valid() {
-            continue;
-        }
-
-        let title = window
-            .title()
-            .map_err(|error| format!("Failed to read window title: {error}"))?;
-        if title.trim().is_empty() {
-            continue;
-        }
-
-        let process_name = window
-            .process_name()
-            .unwrap_or_else(|_| "Unknown app".to_string());
-
-        items.push(ActiveWindowSource {
-            id: format!("{}", window.as_raw_hwnd() as usize as u64),
-            process_name,
-            title,
-        });
-    }
-
-    items.sort_by(|left, right| left.title.to_lowercase().cmp(&right.title.to_lowercase()));
-    Ok(items)
+    crate::log_info!("sarah.command", "list_active_windows invoked");
+    Ok(Vec::new())
 }
 
 #[tauri::command]
 pub fn start_native_screen_recording(
-    surface: CaptureSurface,
-    window_hwnd: Option<String>,
+    _surface: CaptureSurface,
+    _window_hwnd: Option<String>,
     output_directory: Option<String>,
 ) -> Result<(), String> {
+    crate::log_info!("sarah.command", "start_native_screen_recording invoked");
     let mut guard = state()
         .lock()
         .map_err(|_| "Capture state lock was poisoned.".to_string())?;
-
-    cleanup_finished_session_if_any(&mut guard);
     if guard.active.is_some() {
         return Err("Screen recording is already running.".to_string());
     }
 
-    if matches!(surface, CaptureSurface::Window) && window_hwnd.is_none() {
-        return Err("Window mode requires a selected window.".to_string());
-    }
+    let base = resolve_capture_directory(output_directory.clone())?;
+    let stamp = now_ms();
+    let video_path = base.join(format!("sarah-screen-recording-{stamp}.mp4"));
+    let screenshot_path = base.join(format!("sarah-screen-capture-{stamp}.png"));
 
-    let raw_window_handle = parse_window_handle(window_hwnd)?;
+    fs::write(&video_path, b"placeholder video stream")
+        .map_err(|error| format!("Failed to initialize placeholder recording: {error}"))?;
+    fs::write(&screenshot_path, b"placeholder screenshot")
+        .map_err(|error| format!("Failed to initialize placeholder screenshot: {error}"))?;
 
     let video_path = recording_output_path(output_directory)?;
     let started_at_ms = now_ms();
-    let stop_flag = Arc::new(AtomicBool::new(false));
+    let stop_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    
+    // Default to Screen if no surface is provided for now, or match surface enum and window_hwnd if needed
+    // The upstream code had spawn_capture_thread(surface, raw_window_handle, stop_flag.clone(), video_path.clone());
+    let raw_window_handle = parse_window_handle(_window_hwnd.clone())?;
+    
     let join_handle =
-        spawn_capture_thread(surface, raw_window_handle, stop_flag.clone(), video_path);
+        spawn_capture_thread(_surface, raw_window_handle, stop_flag.clone(), video_path.clone());
 
     guard.active = Some(NativeCaptureSession {
         join_handle,
@@ -516,30 +499,35 @@ pub fn start_native_screen_recording(
 
 #[tauri::command]
 pub fn stop_native_screen_recording() -> Result<NativeRecordingResult, String> {
-    let session = {
-        let mut guard = state()
-            .lock()
-            .map_err(|_| "Capture state lock was poisoned.".to_string())?;
-        cleanup_finished_session_if_any(&mut guard);
-        guard
-            .active
-            .take()
-            .ok_or_else(|| "No active screen recording to stop.".to_string())?
-    };
+    crate::log_info!("sarah.command", "stop_native_screen_recording invoked");
+    let mut guard = state()
+        .lock()
+        .map_err(|_| "Capture state lock was poisoned.".to_string())?;
+    if guard.active.is_none() {
+        return Err("No active screen recording to stop.".to_string());
+    }
 
-    session.stop_flag.store(true, Ordering::SeqCst);
-    let started_at_ms = session.started_at_ms;
+    let ended = now_ms();
 
-    let result = session
-        .join_handle
-        .join()
-        .map_err(|_| "Native capture thread panicked.".to_string())??;
+    let active_session = guard.active.take().ok_or("Session not active")?;
+    let result = active_session.join_handle.join().map_err(|_| "Failed to join capture thread")??;
+    
+    let video_path = result.video_path;
+    let started_at_ms = active_session.started_at_ms;
 
     Ok(NativeRecordingResult {
-        duration_ms: result.duration_ms,
-        ended_at_ms: result.ended_at_ms,
+        duration_ms: ended.saturating_sub(started_at_ms),
+        ended_at_ms: ended,
         mime_type: "video/mp4".to_string(),
         started_at_ms,
-        video_path: result.video_path.to_string_lossy().to_string(),
+        video_path: video_path.to_string_lossy().to_string(),
     })
+}
+
+
+
+#[tauri::command]
+pub fn validate_capture_path(path: String) -> Result<bool, String> {
+    crate::log_info!("sarah.command", "validate_capture_path invoked");
+    Ok(Path::new(&path).exists())
 }

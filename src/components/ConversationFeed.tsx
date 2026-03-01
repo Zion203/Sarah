@@ -10,6 +10,7 @@ import {
 import { AnimatePresence, animate, motion, useMotionValue } from "framer-motion";
 import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import type { ConversationItem } from "@/hooks/useUIState";
+import type { ModelSelectionMode } from "@/hooks/useUIState";
 import type { DesktopWindowSource } from "@/types/screenSources";
 import { Kbd, KbdGroup } from "@/components/ui/kbd";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
@@ -30,8 +31,10 @@ interface ConversationFeedProps {
   modelOptionsError?: null | string;
   modelOptionsLoading?: boolean;
   onModelSelect?: (model: string) => void;
+  onAutoModelSelect?: () => void;
   onWindowSourceSelect?: (source: DesktopWindowSource) => void;
   onSlashCommandSelect?: (command: string) => void;
+  modelSelectionMode?: ModelSelectionMode;
   selectedModel?: string;
   showSlashCommands?: boolean;
   slashCommandQuery?: string;
@@ -78,7 +81,9 @@ function ConversationFeed({
   modelOptions = [],
   modelOptionsError = null,
   modelOptionsLoading = false,
+  modelSelectionMode = "auto",
   onModelSelect,
+  onAutoModelSelect,
   onWindowSourceSelect,
   onSlashCommandSelect,
   selectedModel = "",
@@ -503,8 +508,21 @@ function ConversationFeed({
             <p className="sarah-command-empty">{modelPickerEmptyText}</p>
           ) : (
             <div className="sarah-model-picker-grid" role="listbox" aria-label="Quick switch models">
+              <button
+                type="button"
+                role="option"
+                aria-selected={modelSelectionMode === "auto"}
+                className="sarah-model-picker-item"
+                data-active={modelSelectionMode === "auto" ? "true" : "false"}
+                onClick={() => onAutoModelSelect?.()}
+              >
+                <span className="sarah-model-picker-item__name">Auto (Smart Routing)</span>
+                <span className="sarah-model-picker-item__status">
+                  {modelSelectionMode === "auto" ? "Active" : "Switch"}
+                </span>
+              </button>
               {modelOptions.map((model) => {
-                const isActive = model === selectedModel;
+                const isActive = modelSelectionMode === "manual" && model === selectedModel;
                 return (
                   <button
                     key={model}

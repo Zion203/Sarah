@@ -1,152 +1,80 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Download, Minus, Pin, RefreshCw, X } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { Download, Minus, Pin, RefreshCw, X, AlertCircle, CheckCircle2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { MAX_QUICK_SWITCH_MODELS, useQuickSwitchModels } from "@/hooks/useQuickSwitchModels";
 import {
-  MAX_QUICK_SWITCH_MODELS,
-  useQuickSwitchModels,
-} from "@/hooks/useQuickSwitchModels";
-import { OLLAMA_MODEL_STORAGE_KEY } from "@/hooks/useUIState";
+  MODEL_SELECTION_MODE_STORAGE_KEY,
+  OLLAMA_MODEL_STORAGE_KEY,
+} from "@/hooks/useUIState";
 
 interface ModelsWindowProps {
   embedded?: boolean;
   onRequestClose?: () => void;
 }
 
-interface DetailedOllamaModel {
-  digestShort: string;
+interface BackendModel {
+  id: string;
+  name: string;
+  displayName: string;
   family: string;
-  modifiedAt: null | string;
-  name: string;
-  parameterSize: string;
-  quantizationLevel: string;
-  sizeBytes: number;
-  sizeLabel: string;
+  parameterCount: string | null;
+  quantization: string | null;
+  fileSizeMb: number | null;
+  minRamMb: number;
+  recommendedRamMb: number;
+  performanceTier: string;
+  energyTier: string;
+  isDownloaded: number;
+  isActive: number;
+  isDefault: number;
+  isRecommended: number;
 }
 
-interface ModelLibraryEntry {
-  description: string;
-  name: string;
+interface DownloadProgress {
+  modelId: string;
+  status: "queued" | "downloading" | "completed" | "failed" | "not_started" | "already_downloaded";
+  progressPct: number;
+  bytesDownloaded: number;
+  bytesTotal: number | null;
+  errorMessage: string | null;
 }
 
-const MODEL_LIBRARY: ModelLibraryEntry[] = [
-  { name: "llama3.1:8b", description: "Balanced, fast local assistant model." },
-  { name: "llama3.1:70b", description: "Higher quality reasoning with heavier RAM/GPU usage." },
-  { name: "qwen2.5:7b", description: "Strong multilingual and coding capability." },
-  { name: "qwen2.5-coder:7b", description: "Code-focused model for development tasks." },
-  { name: "mistral:7b", description: "General-purpose lightweight model." },
-  { name: "phi4:latest", description: "Compact model with good instruction following." },
-  { name: "deepseek-r1:8b", description: "Reasoning-focused distilled model." },
-  { name: "gemma2:9b", description: "Reliable instruction model with strong baseline quality." },
-];
-
-function normalizeDetailedModel(value: unknown): DetailedOllamaModel | null {
-  if (typeof value !== "object" || value === null) {
-    return null;
-  }
-
-  const row = value as Record<string, unknown>;
-  const name = typeof row.name === "string" ? row.name.trim() : "";
-  if (!name) {
-    return null;
-  }
-
-  return {
-    digestShort: typeof row.digestShort === "string" ? row.digestShort : "",
-    family: typeof row.family === "string" ? row.family : "Unknown",
-    modifiedAt: typeof row.modifiedAt === "string" ? row.modifiedAt : null,
-    name,
-    parameterSize: typeof row.parameterSize === "string" ? row.parameterSize : "Unknown",
-    quantizationLevel:
-      typeof row.quantizationLevel === "string" ? row.quantizationLevel : "Unknown",
-    sizeBytes: typeof row.sizeBytes === "number" ? row.sizeBytes : 0,
-    sizeLabel: typeof row.sizeLabel === "string" ? row.sizeLabel : "Unknown size",
-  };
-}
-
-function normalizeDetailedModels(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const unique = new Map<string, DetailedOllamaModel>();
-  for (const item of value) {
-    const normalized = normalizeDetailedModel(item);
-    if (!normalized) {
-      continue;
-    }
-    unique.set(normalized.name, normalized);
-  }
-
-  return Array.from(unique.values()).sort((left, right) =>
-    left.name.toLowerCase().localeCompare(right.name.toLowerCase()),
-  );
+interface CompatibilityInfo {
+  modelId: string;
+  compatibilityScore: number;
+  reason: string;
 }
 
 function readSelectedModel() {
   if (typeof window === "undefined") {
     return "";
   }
-
   return window.localStorage.getItem(OLLAMA_MODEL_STORAGE_KEY)?.trim() ?? "";
 }
 
 function toErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
+  if (error instanceof Error && error.message.trim()) return error.message;
+  if (typeof error === "object" && error !== null && "message" in error && typeof (error as any).message === "string" && (error as any).message.trim()) {
+    return (error as any).message;
   }
-
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof (error as { message: unknown }).message === "string" &&
-    (error as { message: string }).message.trim()
-  ) {
-    return (error as { message: string }).message;
-  }
-
-  if (typeof error === "string" && error.trim()) {
-    return error;
-  }
-
+  if (typeof error === "string" && error.trim()) return error;
   return fallback;
 }
 
-function formatModifiedAt(value: null | string) {
-  if (!value) {
-    return "Unknown";
-  }
-
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.valueOf())) {
-    return value;
-  }
-
-  return parsed.toLocaleString();
-}
-
-function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
+export default function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
   const { quickSwitchModels, setQuickSwitchModels } = useQuickSwitchModels();
-  const [installedModels, setInstalledModels] = useState<DetailedOllamaModel[]>([]);
-  const [isLoadingInstalled, setIsLoadingInstalled] = useState(false);
-  const [installedError, setInstalledError] = useState<null | string>(null);
+  const [catalogModels, setCatalogModels] = useState<BackendModel[]>([]);
+  const [installedModels, setInstalledModels] = useState<BackendModel[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorStatus, setErrorStatus] = useState<null | string>(null);
   const [selectedModel, setSelectedModel] = useState(readSelectedModel);
   const [statusMessage, setStatusMessage] = useState<null | string>(null);
-  const [downloadStateByModel, setDownloadStateByModel] = useState<
-    Record<string, "done" | "error" | "loading">
-  >({});
+  const [downloadStates, setDownloadStates] = useState<Record<string, DownloadProgress>>({});
+  const [compatScores, setCompatScores] = useState<Record<string, CompatibilityInfo>>({});
 
-  const installedSet = useMemo(
-    () => new Set(installedModels.map((model) => model.name)),
-    [installedModels],
-  );
+  const installedSet = useMemo(() => new Set(installedModels.map((m) => m.name)), [installedModels]);
   const quickSwitchSet = useMemo(() => new Set(quickSwitchModels), [quickSwitchModels]);
 
   useEffect(() => {
@@ -155,36 +83,79 @@ function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
         setSelectedModel(readSelectedModel());
       }
     };
-
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const loadInstalledModels = useCallback(async () => {
-    setIsLoadingInstalled(true);
-    setInstalledError(null);
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    setErrorStatus(null);
     try {
-      const response = await invoke<unknown>("list_ollama_models_detailed");
-      const normalized = normalizeDetailedModels(response);
-      setInstalledModels(normalized);
+      const dbCatalog = await invoke<BackendModel[]>("get_model_catalog");
+      const dbInstalled = await invoke<BackendModel[]>("get_installed_models");
+
+      setCatalogModels(dbCatalog);
+      setInstalledModels(dbInstalled);
+
+      // const dbRecommended = await invoke<any[]>("get_recommended_models");
+      // Could merge recommendation info here
+
     } catch (error) {
-      setInstalledError(toErrorMessage(error, "Failed to load local models from Ollama."));
-      setInstalledModels([]);
+      setErrorStatus(toErrorMessage(error, "Failed to load models."));
     } finally {
-      setIsLoadingInstalled(false);
+      setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    void loadInstalledModels();
-  }, [loadInstalledModels]);
+    void loadData();
+  }, [loadData]);
+
+  const loadCompatScore = async (modelId: string) => {
+    if (compatScores[modelId]) return;
+    try {
+      const score = await invoke<CompatibilityInfo>("get_model_compatibility_score", { modelId });
+      setCompatScores(prev => ({ ...prev, [modelId]: score }));
+    } catch {
+      // ignore
+    }
+  };
+
+  useEffect(() => {
+    catalogModels.forEach(m => loadCompatScore(m.id));
+  }, [catalogModels]);
+
+  // Polling for downloads
+  useEffect(() => {
+    const activeDownloads = Object.values(downloadStates).filter(
+      (d) => d.status === "queued" || d.status === "downloading"
+    );
+    if (activeDownloads.length === 0) return;
+
+    const interval = setInterval(async () => {
+      for (const d of activeDownloads) {
+        try {
+          const progress = await invoke<DownloadProgress>("get_download_progress", { modelId: d.modelId });
+          setDownloadStates((prev) => ({ ...prev, [d.modelId]: progress }));
+          if (progress.status === "completed" || progress.status === "failed") {
+            if (progress.status === "completed") {
+              loadData(); // refresh installed list
+            }
+          }
+        } catch (e) {
+          console.error("Polled progress failed", e);
+        }
+      }
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [downloadStates, loadData]);
 
   const handleClose = async () => {
     if (embedded) {
       onRequestClose?.();
       return;
     }
-
     await getCurrentWindow().close();
   };
 
@@ -192,22 +163,25 @@ function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
     await getCurrentWindow().minimize();
   };
 
-  const handleSetActiveModel = (model: string) => {
-    const normalized = model.trim();
-    if (!normalized) {
-      return;
-    }
+  const handleSetActiveModel = async (modelName: string, modelId: string) => {
+    const normalized = modelName.trim();
+    if (!normalized) return;
 
-    window.localStorage.setItem(OLLAMA_MODEL_STORAGE_KEY, normalized);
-    setSelectedModel(normalized);
-    setStatusMessage(`Active model switched to ${normalized}.`);
+    try {
+      await invoke("set_default_model", { modelId });
+      window.localStorage.setItem(OLLAMA_MODEL_STORAGE_KEY, normalized);
+      window.localStorage.setItem(MODEL_SELECTION_MODE_STORAGE_KEY, "manual");
+      setSelectedModel(normalized);
+      setStatusMessage(`Active model switched to ${normalized} (manual mode).`);
+      loadData();
+    } catch (e) {
+      setStatusMessage(toErrorMessage(e, "Failed to set default model."));
+    }
   };
 
   const handleToggleQuickSwitch = (model: string) => {
     const normalized = model.trim();
-    if (!normalized) {
-      return;
-    }
+    if (!normalized) return;
 
     if (!quickSwitchSet.has(normalized) && quickSwitchModels.length >= MAX_QUICK_SWITCH_MODELS) {
       setStatusMessage(`Quick switch supports up to ${MAX_QUICK_SWITCH_MODELS} models.`);
@@ -220,31 +194,42 @@ function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
       }
       return [normalized, ...current].slice(0, MAX_QUICK_SWITCH_MODELS);
     });
-    setStatusMessage(
-      quickSwitchSet.has(normalized)
-        ? `${normalized} removed from quick switch.`
-        : `${normalized} added to quick switch.`,
-    );
+    setStatusMessage(quickSwitchSet.has(normalized) ? `${normalized} removed from quick switch.` : `${normalized} added to quick switch.`);
   };
 
-  const handleDownloadModel = async (model: string) => {
-    const normalized = model.trim();
-    if (!normalized) {
-      return;
-    }
-
-    setDownloadStateByModel((current) => ({ ...current, [normalized]: "loading" }));
-    setStatusMessage(`Downloading ${normalized}...`);
-
+  const handleDownloadModel = async (modelId: string) => {
+    setStatusMessage(`Starting download...`);
     try {
-      const status = await invoke<string>("pull_ollama_model", { model: normalized });
-      setDownloadStateByModel((current) => ({ ...current, [normalized]: "done" }));
-      setStatusMessage(`${normalized}: ${status}`);
-      await loadInstalledModels();
+      await invoke("start_model_download", { modelId });
+      // trigger poll
+      const progress = await invoke<DownloadProgress>("get_download_progress", { modelId });
+      setDownloadStates(prev => ({ ...prev, [modelId]: progress }));
+      setStatusMessage(`Started downloading.`);
     } catch (error) {
-      setDownloadStateByModel((current) => ({ ...current, [normalized]: "error" }));
-      setStatusMessage(toErrorMessage(error, `Failed to download ${normalized}.`));
+      setStatusMessage(toErrorMessage(error, `Failed to download model.`));
     }
+  };
+
+  const renderCompatBadge = (modelId: string) => {
+    const compat = compatScores[modelId];
+    if (!compat) return null;
+    let color = "text-yellow-600 bg-yellow-500/10 border-yellow-500/20";
+    let icon = <AlertCircle className="size-3 mr-1" />;
+    let text = "Fair";
+    if (compat.compatibilityScore >= 0.8) {
+      color = "text-green-600 bg-green-500/10 border-green-500/20";
+      icon = <CheckCircle2 className="size-3 mr-1" />;
+      text = "Good";
+    } else if (compat.compatibilityScore <= 0.4) {
+      color = "text-red-600 bg-red-500/10 border-red-500/20";
+      text = "Poor";
+    }
+
+    return (
+      <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${color}`} title={compat.reason}>
+        {icon} {text} hardware match
+      </span>
+    );
   };
 
   return (
@@ -254,21 +239,10 @@ function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
           <div className="sarah-models-titlebar__meta">Models</div>
           <p className="sarah-models-titlebar__title">Sarah AI Models</p>
           <div className="sarah-models-titlebar__window-controls" data-tauri-disable-drag-region="true">
-            <button
-              type="button"
-              className="sarah-models-titlebar__window-btn"
-              aria-label="Minimize models window"
-              style={{ display: embedded ? "none" : undefined }}
-              onClick={() => void handleMinimize()}
-            >
+            <button type="button" className="sarah-models-titlebar__window-btn" style={{ display: embedded ? "none" : undefined }} onClick={() => void handleMinimize()}>
               <Minus className="size-3.5" />
             </button>
-            <button
-              type="button"
-              className="sarah-models-titlebar__window-btn sarah-models-titlebar__window-btn--close"
-              aria-label="Close models window"
-              onClick={() => void handleClose()}
-            >
+            <button type="button" className="sarah-models-titlebar__window-btn sarah-models-titlebar__window-btn--close" onClick={() => void handleClose()}>
               <X className="size-3.5" />
             </button>
           </div>
@@ -298,15 +272,8 @@ function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
                       </div>
                     );
                   }
-
                   return (
-                    <button
-                      key={model}
-                      type="button"
-                      className="sarah-models-quick-slot"
-                      data-filled="true"
-                      onClick={() => handleToggleQuickSwitch(model)}
-                    >
+                    <button key={model} type="button" className="sarah-models-quick-slot" data-filled="true" onClick={() => handleToggleQuickSwitch(model)}>
                       <span>{model}</span>
                     </button>
                   );
@@ -314,23 +281,34 @@ function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
               </div>
             </article>
 
-            <article className="sarah-models-card sarah-models-card--library">
-              <header className="sarah-models-card__header">
+            <article className="sarah-models-card sarah-models-card--library flex-1 min-h-0 flex flex-col">
+              <header className="sarah-models-card__header shrink-0">
                 <div>
                   <p className="sarah-models-card__eyebrow">Discover</p>
                   <h2 className="sarah-models-card__title">Model library</h2>
                 </div>
               </header>
-              <div className="sarah-models-library">
-                {MODEL_LIBRARY.map((model) => {
+              <div className="sarah-models-library flex-1 overflow-y-auto min-h-0">
+                {catalogModels.map((model) => {
                   const isInstalled = installedSet.has(model.name);
-                  const downloadState = downloadStateByModel[model.name];
+                  const dState = downloadStates[model.id];
+                  const isDownloading = dState && (dState.status === "queued" || dState.status === "downloading");
 
                   return (
-                    <article key={model.name} className="sarah-models-library-item">
+                    <article key={model.id} className="sarah-models-library-item">
                       <div className="sarah-models-library-item__copy">
-                        <p className="sarah-models-library-item__name">{model.name}</p>
-                        <p className="sarah-models-library-item__description">{model.description}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="sarah-models-library-item__name">{model.displayName}</p>
+                          {renderCompatBadge(model.id)}
+                        </div>
+                        <p className="sarah-models-library-item__description mt-1 text-xs opacity-70">
+                          {model.family} • {model.parameterCount} • {model.quantization} • {model.performanceTier}
+                        </p>
+                        {isDownloading && (
+                          <div className="mt-2 w-full bg-secondary/30 rounded-full h-1.5 overflow-hidden">
+                            <div className="bg-primary h-full transition-all duration-300" style={{ width: `${dState.progressPct}%` }} />
+                          </div>
+                        )}
                       </div>
                       <div className="sarah-models-library-item__actions">
                         {isInstalled ? <span className="sarah-models-chip">Installed</span> : null}
@@ -338,17 +316,11 @@ function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
                           type="button"
                           size="sm"
                           variant="outline"
-                          disabled={downloadState === "loading"}
-                          onClick={() => void handleDownloadModel(model.name)}
+                          disabled={isDownloading || isInstalled}
+                          onClick={() => void handleDownloadModel(model.id)}
                         >
                           <Download className="size-3.5" />
-                          {downloadState === "loading"
-                            ? "Downloading..."
-                            : downloadState === "done"
-                              ? "Downloaded"
-                              : downloadState === "error"
-                                ? "Retry"
-                                : "Download"}
+                          {isDownloading ? `${Math.round(dState.progressPct)}%` : isInstalled ? "Ready" : "Download"}
                         </Button>
                       </div>
                     </article>
@@ -359,43 +331,42 @@ function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
           </section>
 
           <section className="sarah-models-column">
-            <article className="sarah-models-card sarah-models-card--grow">
-              <header className="sarah-models-card__header">
+            <article className="sarah-models-card sarah-models-card--grow flex-1 min-h-0 flex flex-col">
+              <header className="sarah-models-card__header shrink-0">
                 <div>
                   <p className="sarah-models-card__eyebrow">Installed</p>
                   <h2 className="sarah-models-card__title">Local models</h2>
                 </div>
-                <Button type="button" size="sm" variant="outline" onClick={() => void loadInstalledModels()}>
+                <Button type="button" size="sm" variant="outline" onClick={() => void loadData()}>
                   <RefreshCw className="size-3.5" />
                   Refresh
                 </Button>
               </header>
 
-              {isLoadingInstalled ? (
+              {isLoading ? (
                 <p className="sarah-models-state">Loading local models...</p>
-              ) : installedError ? (
-                <p className="sarah-models-state">{installedError}</p>
+              ) : errorStatus ? (
+                <p className="sarah-models-state">{errorStatus}</p>
               ) : installedModels.length === 0 ? (
                 <p className="sarah-models-state">
                   No local models found. Download one from the model library.
                 </p>
               ) : (
-                <div className="sarah-models-installed-list">
+                <div className="sarah-models-installed-list flex-1 overflow-y-auto min-h-0">
                   {installedModels.map((model) => {
                     const isPinned = quickSwitchSet.has(model.name);
-                    const isActive = selectedModel === model.name;
+                    const isActive = selectedModel === model.name || model.isDefault === 1;
                     const cannotPinMore = !isPinned && quickSwitchModels.length >= MAX_QUICK_SWITCH_MODELS;
 
                     return (
-                      <article key={model.name} className="sarah-models-installed-item">
+                      <article key={model.id} className="sarah-models-installed-item">
                         <div className="sarah-models-installed-item__copy">
-                          <p className="sarah-models-installed-item__name">{model.name}</p>
+                          <p className="sarah-models-installed-item__name">{model.displayName}</p>
                           <p className="sarah-models-installed-item__meta">
-                            {model.family} • {model.parameterSize} • {model.quantizationLevel}
+                            {model.family} • {model.parameterCount} • {model.quantization}
                           </p>
                           <p className="sarah-models-installed-item__meta">
-                            {model.sizeLabel} • Updated {formatModifiedAt(model.modifiedAt)}
-                            {model.digestShort ? ` • ${model.digestShort}` : ""}
+                            {model.fileSizeMb ? `${(model.fileSizeMb / 1024).toFixed(2)} GB` : "Unknown Size"}
                           </p>
                         </div>
                         <div className="sarah-models-installed-item__actions">
@@ -403,7 +374,7 @@ function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
                             type="button"
                             size="sm"
                             variant={isActive ? "secondary" : "outline"}
-                            onClick={() => handleSetActiveModel(model.name)}
+                            onClick={() => handleSetActiveModel(model.name, model.id)}
                           >
                             {isActive ? "Active" : "Use model"}
                           </Button>
@@ -434,5 +405,3 @@ function ModelsWindow({ embedded = false, onRequestClose }: ModelsWindowProps) {
     </main>
   );
 }
-
-export default ModelsWindow;

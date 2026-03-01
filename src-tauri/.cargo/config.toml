@@ -1,0 +1,7 @@
+[build]
+jobs = 8
+
+[env]
+# Do not force CUDA during local/native builds; keep CPU path portable.
+CMAKE_BUILD_PARALLEL_LEVEL = "8"
+CMAKE_ARGS = "-DGGML_CUDA=OFF"

@@ -31,18 +31,19 @@ interface SettingsWindowProps {
   theme: ThemeMode;
 }
 
-type SettingsTab = "general" | "appearance" | "audio" | "permissions";
+type SettingsTab = "general" | "appearance" | "audio" | "permissions" | "system";
 
 const SETTINGS_TABS: Array<{
   icon: ComponentType<{ className?: string }>;
   key: SettingsTab;
   label: string;
 }> = [
-  { icon: SlidersHorizontal, key: "general", label: "General" },
-  { icon: Sparkles, key: "appearance", label: "Appearance" },
-  { icon: Volume2, key: "audio", label: "Voice & Audio" },
-  { icon: ShieldCheck, key: "permissions", label: "Permissions" },
-];
+    { icon: SlidersHorizontal, key: "general", label: "General" },
+    { icon: Sparkles, key: "appearance", label: "Appearance" },
+    { icon: Volume2, key: "audio", label: "Voice & Audio" },
+    { icon: ShieldCheck, key: "permissions", label: "Permissions" },
+    { icon: Gauge, key: "system", label: "System" },
+  ];
 
 function surfaceLabel(surface: ScreenCaptureSurface) {
   return surface === "window" ? "Window" : "Entire Screen";
@@ -59,6 +60,24 @@ function formatPermissionTimestamp(value: null | string) {
   }
 
   return `Granted ${parsed.toLocaleString()}`;
+}
+
+interface HardwareProfile {
+  cpuBrand: string;
+  cpuCores: number;
+  totalRamMb: number;
+  gpuName: string | null;
+  tier: string;
+}
+
+interface StartupTelemetry {
+  startupMs: number;
+}
+
+interface SystemStats {
+  cpuUsagePct: number;
+  memoryUsedMb: number;
+  memoryTotalMb: number;
 }
 
 function SettingsWindow({
@@ -126,6 +145,29 @@ function SettingsWindow({
       }
     })();
   }, []);
+
+  const [hardwareProfile, setHardwareProfile] = useState<HardwareProfile | null>(null);
+  const [startupTelemetry, setStartupTelemetry] = useState<StartupTelemetry | null>(null);
+  const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
+
+  useEffect(() => {
+    if (activeTab === "system") {
+      if (!hardwareProfile) {
+        invoke<HardwareProfile>("get_hardware_profile")
+          .then(setHardwareProfile)
+          .catch(console.error);
+        invoke<StartupTelemetry>("get_startup_telemetry")
+          .then(setStartupTelemetry)
+          .catch(console.error);
+      }
+
+      invoke<SystemStats>("get_system_stats").then(setSystemStats).catch(console.error);
+      const interval = setInterval(() => {
+        invoke<SystemStats>("get_system_stats").then(setSystemStats).catch(console.error);
+      }, 3000);
+      return () => clearInterval(interval);
+    }
+  }, [activeTab, hardwareProfile]);
 
   const selectCapturePath = async () => {
     setIsSelectingCaptureDirectory(true);
@@ -582,6 +624,39 @@ function SettingsWindow({
                       </p>
                     </div>
                     <Switch checked={allowCloudSync} onCheckedChange={setAllowCloudSync} />
+                  </article>
+                </div>
+              )}
+
+              {activeTab === "system" && (
+                <div className="sarah-settings-group">
+                  <article className="sarah-settings-row">
+                    <div className="sarah-settings-row__copy">
+                      <p className="sarah-settings-row__title">Hardware Profile</p>
+                      <ul className="sarah-settings-row__note list-disc list-inside mt-2 space-y-1">
+                        <li>CPU: {hardwareProfile?.cpuBrand || "Unknown"} ({hardwareProfile?.cpuCores || "?"} cores)</li>
+                        <li>RAM: {hardwareProfile?.totalRamMb || "?"} MB</li>
+                        <li>GPU: {hardwareProfile?.gpuName || "None"}</li>
+                        <li>Device Tier: {hardwareProfile?.tier || "Unknown"}</li>
+                      </ul>
+                    </div>
+                  </article>
+                  <article className="sarah-settings-row">
+                    <div className="sarah-settings-row__copy">
+                      <p className="sarah-settings-row__title">Live System Stats</p>
+                      <ul className="sarah-settings-row__note list-disc list-inside mt-2 space-y-1">
+                        <li>CPU Usage: {systemStats?.cpuUsagePct?.toFixed(1) || "0.0"}%</li>
+                        <li>Memory: {systemStats?.memoryUsedMb || "?"} / {systemStats?.memoryTotalMb || "?"} MB</li>
+                      </ul>
+                    </div>
+                  </article>
+                  <article className="sarah-settings-row">
+                    <div className="sarah-settings-row__copy">
+                      <p className="sarah-settings-row__title">Telemetry</p>
+                      <p className="sarah-settings-row__note">
+                        Startup Time: {startupTelemetry?.startupMs || "?"} ms
+                      </p>
+                    </div>
                   </article>
                 </div>
               )}
